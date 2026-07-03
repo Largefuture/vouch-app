@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a1e">
+<title>Vouch — Own the proof of how you treat people</title>
+<meta name="description" content="The verified, portable proof of how you treat people — owned by you, not your employer. Free for customer-facing workers, forever.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Vouch">
+<meta property="og:title" content="Vouch — Own your reputation">
+<meta property="og:description" content="Your boss owns your reviews. The day you quit, you keep nothing. Vouch is how workers finally own the proof of how they treat people.">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+</head>
+<body>
+<div id="app"></div>
+<script src="trust.js"></script>
+<script src="api.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script>
+  // one-time bootstrap: ?api=https://your-backend lets you point this static install at a
+  // live backend later without redeploying — visit the link once, it's remembered on the device.
+  (function () {
+    var p = new URLSearchParams(location.search).get("api");
+    if (p !== null) { try { localStorage.setItem("vouch_api", p); } catch (e) {} }
+  })();
+  // PWA: register service worker when served over http(s); silently skipped on file://
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
+</script>
+</body>
+</html>

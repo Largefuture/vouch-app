@@ -1,0 +1,18 @@
+{
+  "name": "Vouch — Own your work",
+  "short_name": "Vouch",
+  "description": "The verified, portable proof of how you treat people — owned by you, not your employer. Free for workers, forever.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a1e",
+  "theme_color": "#0a0a1e",
+  "categories": ["productivity", "business", "lifestyle"],
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
