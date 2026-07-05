@@ -353,7 +353,8 @@ let flow=null;
 function startFlow(handle){
   flow={ w:null, handle, step:0, rating:0, chips:new Set(), comment:"", name:"", contactable:false,
     phone:"", otp:"", otpVerified:false, geoVerified:false, receiptVerified:false, receiptText:"",
-    payVerified:false, tipped:false, remote:false, venue:"their workplace", lat:null, lng:null, before:null };
+    payVerified:false, tipped:false, remote:false, venue:"their workplace", lat:null, lng:null, before:null,
+    shareBusiness:true };
   getGeo().then(g=>{ if(g && flow && flow.handle===handle){ flow.lat=g.lat; flow.lng=g.lng; } }); // best-effort device location
   const local=store.worker(handle);
   if(local){ // worker previewing on their own device → local path
@@ -394,6 +395,8 @@ function renderFlow(){
       <input type="text" placeholder="Your name (so it counts as a named endorsement)" value="${esc(f.name)}" data-act="name">
       <div class="toggle ${f.contactable?'on':''}" data-act="contactable"><div class="sw"></div>
         <div class="txt"><b>A future employer may contact me to verify</b><small>The strongest thing you can give — a real, callable reference.</small></div></div>
+      <div class="toggle ${f.shareBusiness?'on':''}" data-act="share-business"><div class="sw"></div>
+        <div class="txt"><b>Also send this praise to ${esc(f.venue)}</b><small>Help ${esc(w.name.split(" ")[0])} get recognized where they work. Managers see who their best people really are — from real customers, not a survey.</small></div></div>
     </div>`;
   } else if(f.step===3){
     const otpRow = f.otpVerified
@@ -460,7 +463,7 @@ function submitFeedback(){
       customer_hash: store.hashPhone(f.phone)||("c_anon_"+Date.now()),
       phone:f.phone||null, otp_code: f.otpVerified?(f.otp||"123456"):null,
       receipt_text: f.receiptVerified?(f.receiptText||"The Gilded Owl  03/14/2026  TOTAL $48.20"):null,
-      lat:f.lat||null, lng:f.lng||null, venue:f.venue };
+      lat:f.lat||null, lng:f.lng||null, venue:f.venue, shareBusiness:!!f.shareBusiness };
     const btn=document.querySelector('[data-act="submit"]'); if(btn){ btn.textContent="Sending…"; }
     window.Vouch.api.feedback(w.handle, body).then(r=>{
       if(r&&r.ok){ f.serverTrust=r.trust; f.before=null; f.addedSignals=r.attached_signals||[]; f.step=4; confetti(); renderFlow(); }
@@ -477,6 +480,7 @@ function submitFeedback(){
     comment:f.comment|| (f.rating>=5?"Great service — left through Vouch.":"Thanks for the service."),
     chips:[...f.chips], customerHash: store.hashPhone(f.phone)|| ("c_anon_"+Date.now()),
     customerName:f.name||null, contactable:!!(f.name&&f.contactable), solicited:false,
+    shareBusiness:!!f.shareBusiness,
     venue: store.interactionsFor(w.handle)[0]?.venue||"The Gilded Owl",
     createdAt:new Date().toISOString(), authSignals:sig };
   store.addInteraction(inter);
@@ -612,27 +616,79 @@ function renderRecordRemote(r){
   </div>`;
 }
 
-/* ---------- employer dashboard ---------- */
+/* ---------- Vouch for Business (the B2B feedback product) ---------- */
+function businessDigest(){
+  // Illustrative digest: aggregate the demo world's CUSTOMER-SHARED feedback into one
+  // sample business. Mirrors the server's /api/business/digest boundary — only feedback the
+  // customer chose to share (default-on), only positive worker recognition, no Trust Score,
+  // customers anonymous unless they opted to be contactable.
+  const staff=[], themes={}, highlights=[]; let n=0, ratingSum=0, verified=0;
+  store.allWorkers().forEach(w=>{
+    if(w.handle==="tyler-brooks") return;                       // the flagged review-farm never reaches a business
+    const cust=splitIx(store.interactionsFor(w.handle)).cust.filter(i=>i.shareBusiness!==false);
+    if(!cust.length) return;
+    let sum=0; cust.forEach(i=>{ n++; sum+=i.rating; ratingSum+=i.rating;
+      if(T.isVerified(i.authSignals)) verified++;
+      (i.chips||[]).forEach(c=>themes[c]=(themes[c]||0)+1);
+      highlights.push({comment:i.comment, rating:i.rating, worker:w.name, role:w.role,
+        chips:i.chips||[], sigs:(i.authSignals||[]).map(s=>T.AUTH_LABEL[s]).filter(Boolean),
+        customer:i.contactable?i.customerName:null, when:i.createdAt}); });
+    staff.push({name:w.name, role:w.role, handle:w.handle, shared:cust.length, avg:sum/cust.length});
+  });
+  staff.sort((a,b)=>b.shared-a.shared);
+  highlights.sort((a,b)=>b.rating-a.rating || new Date(b.when)-new Date(a.when));
+  return {n, avg:n?ratingSum/n:0, verifiedRate:n?verified/n:0,
+    themes:Object.entries(themes).map(([tag,count])=>({tag,count})).sort((a,b)=>b.count-a.count).slice(0,8),
+    highlights:highlights.slice(0,6), staff};
+}
 function vEmployer(){
-  const ws=store.allWorkers().map(w=>{ const ix=store.interactionsFor(w.handle); const tr=T.computeTrust(ix);
-    const recent=ix.filter(i=>(Date.now()-new Date(i.createdAt))<86400000*30).length;
-    return {w,tr,recent,verified:ix.filter(i=>T.isVerified(i.authSignals)).length}; })
-    .sort((a,b)=>b.tr.score-a.tr.score);
+  const d=businessDigest();
   app.innerHTML = topbar()+`<div class="shell wide fade">
-    <div style="padding:18px 2px"><div class="eyebrow">The pressure play</div>
-      <h1 class="serif" style="font-size:26px;margin-top:4px">Why employers will have to pay attention</h1>
-      <p class="lead mt-s">Vouch doesn't sell employers anything — the worker owns everything, free, for life. But when enough workers in one workplace carry verified records, the math flips: ignoring them in raises, promotions and hiring becomes indefensible. This is what a workplace's Vouch-owning workers look like.</p></div>
-    <div class="note gold"><span class="nico">✊</span><div class="ntxt"><b>Leverage from below, not a sale from above.</b> A worker walks into a review with proof customers love them — and a manager who waves it off has to explain why. Enough of those conversations, plus public pressure, and recognition stops being optional.</div></div>
-    <div class="card mt pad">
-      ${ws.map((r,i)=>`<div class="lb" data-act="goto" data-h="#/r/${r.w.handle}" style="cursor:pointer;border-bottom:${i<ws.length-1?'1px solid var(--line-2)':'none'}">
-        <div class="rank">${i+1}</div>${avatar(r.w,'sm')}
-        <div class="body"><b>${esc(r.w.name)}</b> <small class="muted">· ${esc(r.w.role)}</small>
-          <div style="margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            ${tierBadge(r.tr.tier)} <small class="muted">${r.verified} verified · ${r.recent} this month</small>
-            ${r.tr.metrics.integrityPenalty>0.05?'<span class="pill rose">⚠ integrity flags</span>':''}</div></div>
-        <div class="sc"><b style="color:${gradeColor(r.tr.grade)}">${r.tr.score}</b><br><small class="muted">${r.tr.grade}</small></div></div>`).join("")}
+    <div style="padding:18px 2px"><div class="eyebrow">Vouch for Business</div>
+      <h1 class="serif" style="font-size:26px;margin-top:4px">The point-of-service feedback your surveys can't get.</h1>
+      <p class="lead mt-s">Your "How did we do?" email gets a 2% reply — mostly from the angriest customers. Vouch feedback is left <b>at the moment of service</b>, by a real person, <b>verified</b> against phone, receipt, location or your POS. It's the most authentic voice-of-customer data in your building — and it comes with the name of the employee who earned it.</p></div>
+
+    <div class="stats">
+      <div class="s"><b>${d.n}</b><span>verified customer notes</span></div>
+      <div class="s"><b>${d.avg?d.avg.toFixed(1):'—'}★</b><span class="sub">avg at point of service</span></div>
+      <div class="s"><b>${Math.round(d.verifiedRate*100)}%</b><span>transaction-verified</span></div>
+      <div class="s"><b>${d.staff.length}</b><span>staff recognized</span></div>
     </div>
-    <div class="note ink mt"><span class="nico">🧪</span><div class="ntxt"><b>Notice Tyler Brooks at the bottom.</b> High star-count, but Vouch's integrity engine caught bursty, single-source, unverified reviews and discounted the score. That's the difference between a vanity wall and a record you can hire on.</div></div>
+
+    <h3 class="mt" style="margin-bottom:8px">Why it beats your current survey</h3>
+    <div class="card pad stack-sm">
+      ${[["📉→📈","Response rate","Emailed CSAT/NPS: ~2% reply, days later, skewed to complaints. Vouch: captured in the moment, from customers happy enough to act — real signal, not just noise."],
+         ["✅","Impossible to fake","Every note is checked against phone, receipt, geofence, or your POS transaction log. Our integrity engine discards bursty, single-source, or purchased reviews before you ever see them."],
+         ["🙋","Attributed to a person","You finally see which employees customers rave about, by name — the recognition data you can't buy and your survey never captures."],
+         ["🎯","Themes, not vanity","Aggregated tags (speed, warmth, problem-solving) show what's working across a location — coaching signal, not a star average."]]
+        .map(x=>`<div style="display:flex;gap:11px;align-items:flex-start;padding:6px 0"><span style="font-size:17px">${x[0]}</span><div><b style="font-size:14px">${x[1]}</b><br><small class="muted">${x[2]}</small></div></div>`).join('<div class="divider" style="margin:0"></div>')}
+    </div>
+
+    ${d.themes.length?`<h3 class="mt" style="margin-bottom:8px">What your customers are praising</h3>
+    <div class="card pad"><div class="chipline">${d.themes.map(t=>`<span class="minichip">${esc(t.tag)} · ${t.count}</span>`).join("")}</div></div>`:''}
+
+    ${d.staff.length?`<h3 class="mt" style="margin-bottom:8px">Recognize your best people <span class="muted" style="font-weight:500;font-size:12px">— positive only, never a ranking</span></h3>
+    <div class="card pad">${d.staff.map((s,i)=>`<div class="lb" style="border-bottom:${i<d.staff.length-1?'1px solid var(--line-2)':'none'}">
+        <div class="rank">${i+1}</div>
+        <div class="body"><b>${esc(s.name)}</b> <small class="muted">· ${esc(s.role)}</small>
+          <div style="margin-top:3px"><small class="muted">${s.shared} customers spoke up · ${s.avg.toFixed(1)}★ avg</small></div></div>
+        <div class="sc"><span class="pill em">★ recognized</span></div></div>`).join("")}</div>`:''}
+
+    ${d.highlights.length?`<h3 class="mt" style="margin-bottom:8px">Sample of what you'd receive</h3>
+    <div class="card pad feed">${d.highlights.map(h=>`<div class="fb"><div class="avatar sm" style="background:linear-gradient(135deg,#b8852a,#1b1d24)">${initials(h.worker)}</div>
+      <div class="body"><div class="row-between"><span class="stars">${stars(h.rating)}</span><small class="muted">${timeAgo(h.when)}</small></div>
+        <div class="q">${esc(h.comment)}</div>
+        <div class="chipline">${(h.chips||[]).map(c=>`<span class="minichip">${esc(c)}</span>`).join("")}</div>
+        <div class="meta"><span>for <b>${esc(h.worker)}</b> · ${esc(h.role)}</span>${h.sigs.length?`<span class="verified-tag">✓ ${esc(h.sigs.slice(0,2).join(" · "))}</span>`:''}${h.customer?`<span class="pill" style="padding:2px 8px;font-size:10.5px">from ${esc(h.customer)}</span>`:'<span class="pill" style="padding:2px 8px;font-size:10.5px">anonymous</span>'}</div></div></div>`).join('<div class="divider"></div>')}</div>`:''}
+
+    <div class="note ink mt"><span class="nico">🤝</span><div class="ntxt"><b>The deal that keeps everyone honest.</b> The business pays for this verified feedback channel — which is what makes Vouch <b>free for workers, forever</b>. You never receive negative scores, worker rankings, or any worker's private portable record. You get what the customer chose to share, with the employee credited. <a class="plain" style="color:#7fe3c0" data-act="goto" data-h="#/privacy">How the boundary is enforced →</a></div></div>
+
+    <div class="card pad mt center stack-sm">
+      <h3>Want this for your locations?</h3>
+      <p class="muted" style="font-size:13px">Verified point-of-service feedback + employee recognition, delivered weekly. Priced per location — and it funds the free worker product underneath it.</p>
+      <button class="btn btn-primary" data-act="copy" data-v="business@vouch — pilot request">Request a pilot for my business</button>
+    </div>
+    <p class="center muted mt" style="font-size:11.5px">Sample digest, aggregated from demo data. Real digests are per-location and include only customer-shared, consented feedback.</p>
   </div>`;
 }
 
@@ -1203,6 +1259,7 @@ document.addEventListener("click",e=>{
     case "rate": flow.rating=+t.dataset.n; renderFlow(); break;
     case "chip": { const c=t.dataset.c; flow.chips.has(c)?flow.chips.delete(c):flow.chips.add(c); renderFlow(); break; }
     case "contactable": flow.contactable=!flow.contactable; renderFlow(); break;
+    case "share-business": flow.shareBusiness=!flow.shareBusiness; renderFlow(); break;
     case "next": if(flow.step===0&&!flow.rating){break;} flow.step++; renderFlow(); break;
     case "back": flow.step=Math.max(0,flow.step-1); renderFlow(); break;
     case "otp-send": { flow.otpSent=true;
