@@ -1,6 +1,6 @@
 /* Vouch service worker — network-first app shell: always fresh when online,
    fully offline-capable from cache. Bump CACHE on any shell change to purge old assets. */
-const CACHE = "vouch-v4";
+const CACHE = "vouch-v5";
 const ASSETS = ["./", "index.html", "styles.css", "trust.js", "api.js", "data.js", "app.js", "manifest.json",
   "icon.svg", "icon-192.png", "icon-512.png", "icon-512-maskable.png", "apple-touch-icon.png"];
 

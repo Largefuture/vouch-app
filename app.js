@@ -69,7 +69,60 @@ function fauxQR(seedStr){
   return `<div class="qr">${cells}</div>`;
 }
 
-function shareUrl(h){ return `vouch.work/r/${h}`; }
+function shareUrl(h){
+  // A REAL link that resolves wherever the app is hosted (works on any origin/subpath).
+  if(location.protocol.startsWith("http"))
+    return location.origin + location.pathname.replace(/[^/]*$/,"") + "#/r/" + h;
+  return "https://largefuture.github.io/vouch-app/#/r/" + h;   // opened as a file → the public install
+}
+async function nativeShare(title, text, url){
+  // Phone-native share sheet (SMS, WhatsApp, IG…) with copy-link fallback on desktop.
+  if(navigator.share){ try{ await navigator.share({ title, text, url }); return true; }catch(e){ return false; } }
+  copy(url); return true;
+}
+function flowUrl(h){ return shareUrl(h).replace("#/r/","#/f/"); }   // straight into "leave a vouch"
+
+/* Lite-Brite share card — a 1080×1350 image built on-device (no server, no tracker). */
+function shareCardCanvas(w, tr, total){
+  const c=document.createElement("canvas"); c.width=1080; c.height=1350; const x=c.getContext("2d");
+  const g=x.createLinearGradient(0,0,1080,1350); g.addColorStop(0,"#15163a"); g.addColorStop(1,"#0a0a1e");
+  x.fillStyle=g; x.fillRect(0,0,1080,1350);
+  x.fillStyle="rgba(255,255,255,.05)";                                  // peg-board dots
+  for(let py=30;py<1350;py+=44)for(let px=30;px<1080;px+=44){ x.beginPath(); x.arc(px,py,3,0,7); x.fill(); }
+  const glow=(cx,cy,r,col)=>{ const rg=x.createRadialGradient(cx,cy,0,cx,cy,r); rg.addColorStop(0,col); rg.addColorStop(1,"rgba(0,0,0,0)"); x.fillStyle=rg; x.fillRect(cx-r,cy-r,r*2,r*2); };
+  glow(140,120,340,"rgba(255,77,109,.32)"); glow(940,140,340,"rgba(77,139,255,.35)"); glow(540,1240,420,"rgba(39,229,164,.25)");
+  x.textAlign="center";
+  x.fillStyle="#27e5a4"; x.font="700 54px -apple-system,system-ui,sans-serif"; x.fillText("✓ Vouch",540,150);
+  x.fillStyle="#f2f3fb"; x.font="800 92px -apple-system,system-ui,sans-serif";
+  const name=(w.name||"").slice(0,18); x.fillText(name,540,420);
+  x.fillStyle="#a9adc4"; x.font="600 46px -apple-system,system-ui,sans-serif"; x.fillText((w.role||"")+(w.city?" · "+w.city:""),540,495);
+  if(tr&&tr.score>0){
+    x.strokeStyle="#27e5a4"; x.lineWidth=16; x.shadowColor="#27e5a4"; x.shadowBlur=40;
+    x.beginPath(); x.arc(540,780,190,-Math.PI/2,-Math.PI/2+2*Math.PI*Math.min(1,tr.score/1000)); x.stroke(); x.shadowBlur=0;
+    x.fillStyle="#fff"; x.font="800 130px -apple-system,system-ui,sans-serif"; x.fillText(String(tr.score),540,810);
+    x.fillStyle="#a9adc4"; x.font="600 40px -apple-system,system-ui,sans-serif"; x.fillText("Vouch Trust Score · grade "+tr.grade,540,890);
+  } else {
+    x.fillStyle="#ffd23f"; x.font="800 100px -apple-system,system-ui,sans-serif"; x.fillText("★ "+total+" vouches",540,800);
+  }
+  x.fillStyle="#e9eaf5"; x.font="650 44px -apple-system,system-ui,sans-serif";
+  x.fillText("I own the proof of how I treat people.",540,1080);
+  x.fillStyle="#7fe3c0"; x.font="600 40px -apple-system,system-ui,sans-serif"; x.fillText(shareUrl(w.handle).replace(/^https?:\/\//,""),540,1160);
+  x.fillStyle="#6b6f8a"; x.font="500 34px -apple-system,system-ui,sans-serif"; x.fillText("Verified · portable · worker-owned · free forever",540,1250);
+  return c;
+}
+async function shareCard(w, tr, total){
+  try{
+    const c=shareCardCanvas(w,tr,total);
+    const blob=await new Promise(res=>c.toBlob(res,"image/png"));
+    const file=new File([blob],"vouch-card.png",{type:"image/png"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:"My Vouch record", text:"I own the proof of how I treat people. "+shareUrl(w.handle)});
+      return;
+    }
+    const a=document.createElement("a"); a.href=c.toDataURL("image/png"); a.download="vouch-card.png"; a.click();
+    toast("Card saved — post it anywhere 🎆");
+  }catch(e){ if(String(e).indexOf("Abort")<0) toast("Couldn't create the card"); }
+}
 function urlB64ToUint8(b64){ const pad="=".repeat((4-b64.length%4)%4); const s=(b64+pad).replace(/-/g,"+").replace(/_/g,"/");
   const raw=atob(s); const arr=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++) arr[i]=raw.charCodeAt(i); return arr; }
 async function enablePush(){
@@ -220,10 +273,17 @@ function vWorker(){
       <div class="s"><b>${fmtPct(tr.metrics.organicRatio)}</b><span>unprompted</span></div>
     </div>
 
+    ${(()=>{ const MS=[1,5,10,25,50,100,250,500]; const hit=MS.filter(m=>total>=m).pop();
+      return hit?`<div class="card pad mt" style="border-color:rgba(255,210,63,.4)">
+        <div class="row-between"><div style="display:flex;gap:11px;align-items:center"><span style="font-size:26px">${hit>=100?'🏆':hit>=25?'🎆':'🎉'}</span>
+          <div><b>${hit}+ vouches strong</b><br><small class="muted">That's real, verified proof — worth showing off.</small></div></div>
+          <button class="btn btn-primary btn-sm" style="width:auto" data-act="share-card">🎇 Share card</button></div></div>`:''; })()}
+
     <div class="btn-row mt">
       <button class="btn btn-ghost btn-sm" data-act="goto" data-h="#/r/${w.handle}">⤴ &nbsp;View / export record</button>
       <button class="btn btn-ghost btn-sm" data-act="goto" data-h="#/share">◇ &nbsp;Share my code</button>
     </div>
+    <button class="btn btn-ghost btn-sm mt-s" style="width:100%" data-act="invite-worker">💚 &nbsp;Know a great worker? Give them their own record</button>
 
     ${attest.length?`<h3 class="mt" style="margin-bottom:8px">Witnessed by colleagues &amp; families <span class="muted" style="font-weight:500;font-size:12px">— ${attest.length}</span></h3>
     <div class="card pad stack">${attest.slice(0,3).map(attestCard).join('<div class="divider"></div>')}</div>`:''}
@@ -262,8 +322,8 @@ function vShare(){
       <div><b>${esc(w.name)}</b><br><small class="muted">${esc(w.role)}</small></div>
       <div class="linkcard"><span>🔗</span><code>${shareUrl(w.handle)}</code>
         <button class="btn btn-ghost btn-sm" data-act="copy" data-v="${shareUrl(w.handle)}">Copy</button></div>
-      <button class="btn btn-primary" data-act="request-vouch">＋ Request a vouch now (copy link)</button>
-      <div class="btn-row"><button class="btn btn-ghost btn-sm" data-act="copy" data-v="${shareUrl(w.handle)}">✉️ Text after a job</button>
+      <button class="btn btn-primary" data-act="request-vouch">＋ Request a vouch now</button>
+      <div class="btn-row"><button class="btn btn-ghost btn-sm" data-act="share-card">🎇 My share card</button>
         <button class="btn btn-ghost btn-sm" data-act="goto" data-h="#/f/${w.handle}">▶ Preview</button></div>
     </div>
     <div class="card pad mt stack-sm">
@@ -273,11 +333,17 @@ function vShare(){
     </div>
     <div class="note ink mt"><span class="nico">🕶️</span><div class="ntxt"><b>Discreet by default — your boss never needs to know.</b> Your code lives on <i>your</i> things, not the company's. Collect <b>after</b> service or off-shift, in addition to whatever your workplace uses. It's your personal record, and that's your right. <a class="plain" style="color:#7fe3c0" data-act="goto" data-h="#/rights">Know your rights &amp; collect safely →</a></div></div>
     <div class="card pad mt stack-sm">
-      <h3>Where to put your code</h3>
+      <h3>The natural moments — in the flow of what already happens</h3>
+      <p class="muted" style="font-size:13px">The ask works when it rides a moment that <b>already exists</b> in the transaction — after the work is done and paid for, never competing with your duties:</p>
+      ${[["🧾","The receipt moment","They're already holding proof of the transaction. “If you were happy, my personal QR is on my card.” Five seconds, after payment."],
+         ["💳","Right after the tip / checkout","The service is complete, gratitude is at its peak, and nothing you say changes what they paid. This is the single best moment."],
+         ["📱","The follow-up text (gig & appointment work)","Ride's over, hair's done, house is clean → one text from YOUR phone, on YOUR time: “Thanks for today — if I did right by you, this takes 30 seconds.”"],
+         ["🗣️","When THEY bring it up","“You were amazing” → “That means a lot — would you put that on my record? It follows me, not the company.” The unprompted vouch scores highest anyway."]]
+        .map(x=>`<div style="display:flex;gap:11px;align-items:flex-start;padding:6px 0"><span style="font-size:17px">${x[0]}</span><div><b style="font-size:14px">${x[1]}</b><br><small class="muted">${x[2]}</small></div></div>`).join('<div class="divider" style="margin:0"></div>')}
       <div class="kpi-inline" style="gap:10px;margin-top:4px">
         <span class="pill">📱 Phone lock screen</span><span class="pill">📲 Instagram / TikTok bio</span>
-        <span class="pill">🪪 Personal card</span><span class="pill">✉️ Text after a job</span><span class="pill">📌 Enamel pin (your own)</span></div>
-      <div class="note" style="margin-top:6px"><span class="nico">🤝</span><div class="ntxt"><b>Softly, never pushy.</b> Can't be at the moment (route work, the customer's already gone)? Text them the link after. Vouch <i>rewards</i> unprompted feedback — you never have to pressure anyone.</div></div>
+        <span class="pill">🪪 Personal card</span><span class="pill">📌 Enamel pin (your own)</span></div>
+      <div class="note" style="margin-top:6px"><span class="nico">🤝</span><div class="ntxt"><b>Softly, never pushy.</b> The moment costs the customer nothing, costs your employer nothing, and takes nothing from your work — it just captures what already happened. Vouch <i>rewards</i> unprompted feedback, so you never have to pressure anyone.</div></div>
     </div>
   </div>${tabbar("#/share")}`;
 }
@@ -367,6 +433,7 @@ function renderFlow(){
             <div class="btn-row mt-s"><button class="btn btn-ghost btn-sm" data-act="tip-demo" data-n="5">Tip $5</button><button class="btn btn-ghost btn-sm" data-act="tip-demo" data-n="10">Tip $10</button></div></div>`}
       <div class="note ink" style="text-align:left"><span class="nico">✨</span><div class="ntxt"><b>You're a service worker too?</b> You can own a record exactly like this. It's free, and it's yours for life.</div></div>
       <button class="btn btn-primary" data-act="enter-worker">Start my own Vouch record</button>
+      <button class="btn btn-dark" data-act="invite-worker">💚 Send Vouch to a worker who deserves it</button>
       <button class="btn btn-ghost" data-act="goto" data-h="#/r/${w.handle}">See ${esc(w.name.split(" ")[0])}'s full public record</button>
     </div>`;
   }
@@ -625,7 +692,8 @@ function vOnboard(){
         : `Contact is <b>OFF</b> — the safe default. You still collect verified feedback; no customer can ever reach you. Recommended for overnight, in-home, solo and safety-sensitive work.`}</div></div>
 
       <button class="btn btn-primary" data-act="create">Create my Service Record</button>
-      <p class="center muted" style="font-size:12px">By starting, this record is <b>yours</b> — portable across every job, for life.</p>
+      <p class="center muted" style="font-size:12px">By starting, this record is <b>yours</b> — portable across every job, for life.<br>
+        <a class="plain" data-act="goto" data-h="#/privacy">Privacy: what we hold &amp; never touch</a> · <a class="plain" data-act="goto" data-h="#/terms">Terms</a></p>
     </div>
     <div class="hr-or" style="margin:18px 0">or explore the demo</div>
     <div class="btn-row"><button class="btn btn-ghost btn-sm" data-act="goto" data-h="#/worker/maria-reyes">Maria · bartender</button>
@@ -744,7 +812,7 @@ function vSettings(){
             <button class="btn btn-ghost btn-sm" data-act="sync-restore" ${gated?'':'disabled style=opacity:.45'}>↓ Restore</button>
             <button class="btn btn-ghost btn-sm" data-act="signout">Sign out</button></div>`
         : `<button class="btn btn-primary" data-act="goto" data-h="#/signin" ${s.online?'':'disabled style=opacity:.45'}>${s.online?'Sign in to back up':'Offline — sign-in unavailable'}</button>`}
-      <small class="muted" style="font-size:11.5px">Server: ${esc(s.base||'(none)')} · We never sell your data and you can delete it anytime — <a class="plain" data-act="goto" data-h="#/manifesto">our promise</a>.</small>
+      <small class="muted" style="font-size:11.5px">Server: ${esc(s.base||'(none)')} · We never sell your data and you can delete it anytime — <a class="plain" data-act="goto" data-h="#/privacy">privacy policy</a> · <a class="plain" data-act="goto" data-h="#/terms">terms</a>.</small>
     </div>`; })()}
 
     ${store.sync.status().signedIn?`<h3 class="mt" style="margin-bottom:8px">Notifications</h3>
@@ -840,6 +908,16 @@ function vRights(){
       <div class="vrow" style="border-color:#f3cdc9;background:var(--rose-wash)"><div class="vico">⛔</div><div class="vbody"><b>Don't</b><small>Solicit on the clock or on company devices · use the company's customer list / POS / contact data · imply you speak for the brand. These are the only things that give an employer a real case.</small></div></div>
     </div>
 
+    <h3 class="mt" style="margin-bottom:8px">Why this never disrupts your job — the stream-of-commerce principle</h3>
+    <div class="card pad stack-sm">
+      <p style="font-size:14px">Every Vouch moment is designed to sit <b>inside what already happens</b> in a transaction — never to add a new demand on your time or your employer's:</p>
+      ${[["⏱️","It happens after the work, not during","The ask lives at the receipt, the checkout, the goodbye, the follow-up text — moments where the service is already complete and paid. Nothing is taken from a shift."],
+         ["🛒","The customer was already there to buy","No one is recruited, diverted, or solicited who wasn't already your customer in the ordinary course of business. That's what keeps it clean — it documents commerce that happened; it doesn't create side-commerce."],
+         ["🏢","Your employer's systems are untouched","No company POS, customer lists, email databases, or devices are used. Their reviews stay theirs; yours are collected on your own things. Two records, zero interference."],
+         ["💵","No money changes direction","Feedback is never tied to the tip or the bill. Nothing a customer says to Vouch changes what the business earns — so there's no competing interest to point at."]]
+        .map(x=>`<div style="display:flex;gap:11px;align-items:flex-start;padding:6px 0"><span style="font-size:17px">${x[0]}</span><div><b style="font-size:14px">${x[1]}</b><br><small class="muted">${x[2]}</small></div></div>`).join('<div class="divider" style="margin:0"></div>')}
+    </div>
+
     <h3 class="mt" style="margin-bottom:8px">Legal ≠ safe from being fired — the honest picture</h3>
     <div class="card pad stack-sm">
       ${[["⚖️","Is it legal?","Collecting your own voluntary, written customer feedback is generally lawful — it's first-party and consensual, and there's no recording, so wiretap/consent laws don't apply."],
@@ -857,6 +935,59 @@ function vRights(){
 
     <button class="btn btn-primary mt" data-act="goto" data-h="#/onboard">Start my record — free →</button>
     <p class="center muted mt" style="font-size:11.5px">General information, not legal advice. Laws vary by state and by your own employment agreement — check yours.</p>
+  </div>`;
+}
+
+/* ---------- privacy policy (real, operational, plain-language) ---------- */
+function vPrivacy(){
+  const rows=[
+    ["📱","Your record lives on YOUR phone first","Vouch is local-first. Your record is stored on your own device. If you never turn on cloud backup, nothing is ever sent to a server at all."],
+    ["☁️","Cloud backup is opt-in — and scoped to you","If you sign in (email code, no password), your record syncs to our server so you can restore it on a new phone. It's tied to your account; no one else's token can read, change, or delete it."],
+    ["📞","We never store phone numbers","When a customer verifies by phone, the number is used once, in memory, to create an anonymous one-way code — then discarded. The number itself is never written anywhere."],
+    ["🧾","We never keep receipt photos","A receipt photo is read once to extract merchant/date/total, then discarded. The photo is never saved."],
+    ["📍","We never store exact locations","On-site verification produces a yes/no answer. A customer's exact GPS point is never kept — only a coarse (~1 km) area, solely so review-farms can be caught."],
+    ["🚯","No trackers. No ads. No analytics scripts.","The app contains zero ad-tech, zero analytics beacons, zero fingerprinting. Check the source — it's public."],
+    ["🗑️","Delete means delete","One tap permanently erases your record from your device and our server. Not 'deactivated' — deleted."],
+    ["🙅","We will never sell your data","Not to employers, not to data brokers, not to anyone, not ever. If Vouch can't survive without selling data, Vouch doesn't survive."],
+  ];
+  app.innerHTML = topbar()+`<div class="shell fade">
+    <div style="padding:20px 2px 6px"><div class="eyebrow">Privacy — the real policy</div>
+      <h1 class="serif" style="font-size:27px;margin-top:6px">What we hold, what we never touch.</h1>
+      <p class="lead mt-s">Written to be read, not clicked past. This is enforced in the code, not just promised here.</p></div>
+    <div class="card stack" style="padding:6px">
+      ${rows.map((r,i)=>`<div class="role pad" style="cursor:default"><div class="ico" style="background:var(--emerald-wash)">${r[0]}</div>
+        <div><h3>${r[1]}</h3><small class="muted">${r[2]}</small></div></div>${i<rows.length-1?'<div class="divider" style="margin:0 14px"></div>':''}`).join("")}
+    </div>
+    <h3 class="mt" style="margin-bottom:8px">The complete list of what our server holds (if you opt in)</h3>
+    <div class="card pad stack-sm">
+      <p style="font-size:13.5px">· Your email (sign-in only) · your name, role, city &amp; the workplace coordinates <i>you</i> chose to set · your vouches: rating, comment, first name of customers who opted to be referees · anonymous one-way customer codes · which verifications passed.</p>
+      <p class="muted" style="font-size:13px">That's the whole list. No phone numbers, no photos, no exact GPS, no browsing data, no contacts, no payment info.</p>
+    </div>
+    <div class="note ink mt"><span class="nico">⚖️</span><div class="ntxt"><b>Who can see what:</b> your public record page shows only what you chose to make public. Customers' full names are never shown unless they opted in as a contactable reference. Employers see nothing unless <i>you</i> show them.</div></div>
+    <div class="btn-row mt"><button class="btn btn-ghost btn-sm" data-act="goto" data-h="#/terms">Terms of use</button>
+      <button class="btn btn-ghost btn-sm" data-act="goto" data-h="#/manifesto">The Vouch Promise</button></div>
+    <p class="center muted mt" style="font-size:11.5px">Questions or a data request: delete and export are built into Settings — no email required.</p>
+  </div>`;
+}
+
+/* ---------- terms (short, human, worker-protective) ---------- */
+function vTerms(){
+  app.innerHTML = topbar()+`<div class="shell fade">
+    <div style="padding:20px 2px 6px"><div class="eyebrow">Terms of use</div>
+      <h1 class="serif" style="font-size:27px;margin-top:6px">Short enough to actually read.</h1></div>
+    <div class="card pad stack-sm">
+      ${[
+        ["1. It's yours","Your record belongs to you. We host it (if you opt into backup); we don't own it, license it, or monetize it. You can export or delete it at any time."],
+        ["2. Free for workers, forever","No worker will ever be charged to create, keep, export, or share their record."],
+        ["3. Be real","Fake vouches, purchased reviews, impersonation, and gaming the integrity engine are the only bannable offenses — because authenticity is the entire value of everyone's record."],
+        ["4. Positive-only","Vouch stores no negative reviews and produces no negative signal about anyone. An empty or deleted record is never a mark against a worker."],
+        ["5. No employer coercion","Employers may not require workers to use Vouch, demand access, or take action against a worker for having (or not having) a record. Employer accounts that abuse this get removed."],
+        ["6. Respect the customer","Customers choose whether to verify and whether to be contactable. Their choices are honored exactly as made, and can't be overridden by anyone."],
+        ["7. No warranty, no lawyers needed","Vouch is provided as-is. We work hard to keep it up and honest, but it's a free tool, not an insurance product. Nothing here is legal advice."],
+      ].map(x=>`<div style="padding:7px 0"><b style="font-size:14px">${x[0]}</b><br><small class="muted">${x[1]}</small></div>`).join('<div class="divider" style="margin:0"></div>')}
+    </div>
+    <div class="btn-row mt"><button class="btn btn-ghost btn-sm" data-act="goto" data-h="#/privacy">Privacy policy</button>
+      <button class="btn btn-primary btn-sm" data-act="goto" data-h="#/onboard">Start my record →</button></div>
   </div>`;
 }
 
@@ -1045,6 +1176,8 @@ function route(){
   else if(parts[0]==="settings"){ vSettings(); }
   else if(parts[0]==="signin"){ vSignin(); }
   else if(parts[0]==="rights"){ vRights(); }
+  else if(parts[0]==="privacy"){ vPrivacy(); }
+  else if(parts[0]==="terms"){ vTerms(); }
   else if(parts[0]==="export"){ vExport(parts[1]||store.current()?.handle); }
   else if(parts[0]==="vouch-for"){ vVouchFor(parts[1]); }
   else vLanding();
@@ -1085,7 +1218,16 @@ document.addEventListener("click",e=>{
     case "demo-call": toast(`Demo: connects you to ${t.dataset.n} (consent on file)`); break;
     case "submit": submitFeedback(); break;
     // capture, export, settings, attestation
-    case "request-vouch": copy(shareUrl(store.current().handle)); toast("Vouch link copied — text it to your customer or coworker"); break;
+    case "request-vouch": { const w=store.current();
+      nativeShare("Vouch for "+w.name.split(" ")[0],
+        `Hi! If I looked after you well, would you take 30 seconds to vouch for me? It goes on MY record (not the company's) and follows me for life:`,
+        flowUrl(w.handle)).then(ok=>{ if(ok&&!navigator.share) toast("Vouch link copied — text it to your customer"); });
+      break; }
+    case "share-card": { const w=store.current(); const cust=splitIx(store.interactionsFor(w.handle)).cust;
+      shareCard(w, T.computeTrust(cust), store.interactionsFor(w.handle).length); break; }
+    case "invite-worker": nativeShare("Vouch — own your work",
+      "You know how the company owns all your reviews? There's a free app where YOU own them — verified, portable, yours for life. I'm on it:",
+      shareUrl("").replace(/#\/r\/$/,"")).then(()=>{ if(!navigator.share) toast("Invite link copied"); }); break;
     case "export": go("#/export/"+(t.dataset.h||store.current().handle)); break;
     case "do-print": window.print(); break;
     case "set-stealth": { const w=store.current(); store.updateWorker(w.handle,{stealth:!(w.stealth!==false)}); vSettings(); break; }
