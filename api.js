@@ -41,6 +41,8 @@
     // public
     record:       (h)     => call("GET",  "/api/workers/"+encodeURIComponent(h)+"/record"),
     leaderboard:  ()      => call("GET",  "/api/employer/leaderboard"),
+    businessDigest:(venue)=> call("GET",  "/api/business/digest?venue="+encodeURIComponent(venue||"")),
+    pilotRequest: (body)  => call("POST", "/api/business/pilot", body),
     feedback:     (h,body)=> call("POST", "/api/workers/"+encodeURIComponent(h)+"/feedback", body),
     attestation:  (h,body)=> call("POST", "/api/workers/"+encodeURIComponent(h)+"/attestation", body),
     // verification

@@ -279,7 +279,8 @@ function vWorker(){
           <div><b>${hit}+ vouches strong</b><br><small class="muted">That's real, verified proof — worth showing off.</small></div></div>
           <button class="btn btn-primary btn-sm" style="width:auto" data-act="share-card">🎇 Share card</button></div></div>`:''; })()}
 
-    <div class="btn-row mt">
+    ${cust.length>=3?`<button class="btn btn-dark mt" style="width:100%" data-act="goto" data-h="#/recognize">📈 &nbsp;Take this to my manager — ask to be recognized</button>`:''}
+    <div class="btn-row mt-s">
       <button class="btn btn-ghost btn-sm" data-act="goto" data-h="#/r/${w.handle}">⤴ &nbsp;View / export record</button>
       <button class="btn btn-ghost btn-sm" data-act="goto" data-h="#/share">◇ &nbsp;Share my code</button>
     </div>
@@ -683,10 +684,18 @@ function vEmployer(){
 
     <div class="note ink mt"><span class="nico">🤝</span><div class="ntxt"><b>The deal that keeps everyone honest.</b> The business pays for this verified feedback channel — which is what makes Vouch <b>free for workers, forever</b>. You never receive negative scores, worker rankings, or any worker's private portable record. You get what the customer chose to share, with the employee credited. <a class="plain" style="color:#7fe3c0" data-act="goto" data-h="#/privacy">How the boundary is enforced →</a></div></div>
 
-    <div class="card pad mt center stack-sm">
-      <h3>Want this for your locations?</h3>
-      <p class="muted" style="font-size:13px">Verified point-of-service feedback + employee recognition, delivered weekly. Priced per location — and it funds the free worker product underneath it.</p>
-      <button class="btn btn-primary" data-act="copy" data-v="business@vouch — pilot request">Request a pilot for my business</button>
+    <div class="card pad-lg mt stack-sm" id="pilot">
+      <h3>Pilot Vouch for Business — free while we onboard</h3>
+      <p class="muted" style="font-size:13px">Verified point-of-service feedback + weekly recognition digest for your team. Tell us where to send it — no card, no commitment.</p>
+      <input type="text" id="pl-biz" placeholder="Business name">
+      <input type="text" id="pl-name" placeholder="Your name">
+      <input type="text" id="pl-email" placeholder="Work email" inputmode="email">
+      <div style="display:flex;gap:10px">
+        <input type="text" id="pl-loc" placeholder="# locations" inputmode="numeric" style="flex:1">
+        <input type="text" id="pl-role" placeholder="Your role (Owner, GM…)" style="flex:2">
+      </div>
+      <button class="btn btn-primary" data-act="pilot-submit">Request my pilot →</button>
+      <p class="center muted" style="font-size:11.5px">We'll reach out within a day. This funds the free worker product.</p>
     </div>
     <p class="center muted mt" style="font-size:11.5px">Sample digest, aggregated from demo data. Real digests are per-location and include only customer-shared, consented feedback.</p>
   </div>`;
@@ -994,6 +1003,55 @@ function vRights(){
   </div>`;
 }
 
+/* ---------- worker → manager recognition / leverage ---------- */
+let recognize={ manager:"", ask:"raise" };
+function vRecognize(){
+  const w=store.current(); const cust=splitIx(store.interactionsFor(w.handle)).cust;
+  const tr=T.computeTrust(cust);
+  const verified=cust.filter(i=>T.isVerified(i.authSignals)).length;
+  const recent=cust.filter(i=>(Date.now()-new Date(i.createdAt))<86400000*30).length;
+  const refs=cust.filter(i=>i.customerName&&i.contactable).length;
+  const first=w.name.split(" ")[0];
+  const asks={ raise:"a raise", promo:"a promotion", shift:"better shifts", recognition:"recognition" };
+  const link=shareUrl(w.handle);
+  const msg=`Hi — I wanted to share something. Customers have been leaving me verified feedback through Vouch — `
+    +`${cust.length} so far${verified?`, ${verified} of them transaction-verified`:''}${recent?`, ${recent} just this month`:''}`
+    +`${refs?`, and ${refs} said they'd personally vouch for me`:''}. It's independent, positive-only proof of how I treat our customers. `
+    +`I'd love to talk about ${asks[recognize.ask]||"growth here"}. You can see the verified record here: ${link}`;
+  app.innerHTML = topbar()+`<div class="shell fade">
+    <div style="padding:20px 2px 6px"><div class="eyebrow">Your leverage</div>
+      <h1 class="serif" style="font-size:26px;margin-top:6px">Walk in with the receipts.</h1>
+      <p class="lead mt-s">This is the whole point of owning your record: verified proof that customers value you, to bring to the person who decides your raise, your shifts, your future. Confident, not confrontational.</p></div>
+
+    <div class="card pad stack-sm">
+      <b style="font-size:14px">What you're bringing</b>
+      <div class="kpi-inline" style="gap:16px">
+        <div class="k"><b>${cust.length}</b><span>customer vouches</span></div>
+        <div class="k"><b>${verified}</b><span>verified</span></div>
+        <div class="k"><b>${refs}</b><span>callable references</span></div>
+        ${verified>=PROVISIONAL_AT?`<div class="k"><b style="color:${gradeColor(tr.grade)}">${tr.grade}</b><span>trust grade</span></div>`:''}
+      </div>
+    </div>
+
+    <h3 class="mt" style="margin-bottom:8px">What are you asking for?</h3>
+    <div class="choice-grid">
+      ${Object.entries(asks).map(([k,v])=>`<button class="choice ${recognize.ask===k?'on':''}" data-act="rec-ask" data-k="${k}">${v[0].toUpperCase()+v.slice(1)}</button>`).join("")}
+    </div>
+
+    <h3 class="mt" style="margin-bottom:8px">Your message <span class="muted" style="font-weight:500;font-size:12px">— edit freely</span></h3>
+    <textarea rows="7" data-act="rec-msg" style="font-size:14px">${esc(msg)}</textarea>
+
+    <div class="card pad mt stack-sm">
+      <input type="text" id="rec-mgr" placeholder="Manager's email (optional)" inputmode="email" value="${esc(recognize.manager)}" data-act="rec-mgr-in">
+      <button class="btn btn-primary" data-act="rec-send">Send to my manager →</button>
+      <button class="btn btn-ghost btn-sm" data-act="rec-copy">Copy the message instead</button>
+    </div>
+
+    <div class="note ink mt"><span class="nico">✊</span><div class="ntxt"><b>Even stronger together.</b> If coworkers bring their records too, it's protected collective action (in the US, the NLRA covers this — even without a union) and far harder to wave off. <a class="plain" style="color:#7fe3c0" data-act="goto" data-h="#/rights">Know your rights first →</a></div></div>
+    <p class="center muted mt" style="font-size:11.5px">Positive-only and yours by choice — no employer can require this or hold it against you.</p>
+  </div>`;
+}
+
 /* ---------- privacy policy (real, operational, plain-language) ---------- */
 function vPrivacy(){
   const rows=[
@@ -1234,6 +1292,7 @@ function route(){
   else if(parts[0]==="rights"){ vRights(); }
   else if(parts[0]==="privacy"){ vPrivacy(); }
   else if(parts[0]==="terms"){ vTerms(); }
+  else if(parts[0]==="recognize"){ vRecognize(); }
   else if(parts[0]==="export"){ vExport(parts[1]||store.current()?.handle); }
   else if(parts[0]==="vouch-for"){ vVouchFor(parts[1]); }
   else vLanding();
@@ -1260,6 +1319,15 @@ document.addEventListener("click",e=>{
     case "chip": { const c=t.dataset.c; flow.chips.has(c)?flow.chips.delete(c):flow.chips.add(c); renderFlow(); break; }
     case "contactable": flow.contactable=!flow.contactable; renderFlow(); break;
     case "share-business": flow.shareBusiness=!flow.shareBusiness; renderFlow(); break;
+    case "rec-ask": recognize.ask=t.dataset.k; vRecognize(); break;
+    case "rec-copy": { const m=($("[data-act=rec-msg]")||{}).value||""; copy(m); break; }
+    case "rec-send": { const m=($("[data-act=rec-msg]")||{}).value||""; const w=store.current();
+      const mgr=(recognize.manager||"").trim();
+      if(mgr.includes("@")){ location.href="mailto:"+encodeURIComponent(mgr)
+        +"?subject="+encodeURIComponent("Customer feedback on my work — "+w.name)
+        +"&body="+encodeURIComponent(m); toast("Opening your email…"); }
+      else nativeShare("My verified customer feedback", m, shareUrl(w.handle)).then(ok=>{ if(ok&&!navigator.share) toast("Message copied — paste it to your manager"); });
+      break; }
     case "next": if(flow.step===0&&!flow.rating){break;} flow.step++; renderFlow(); break;
     case "back": flow.step=Math.max(0,flow.step-1); renderFlow(); break;
     case "otp-send": { flow.otpSent=true;
@@ -1282,6 +1350,24 @@ document.addEventListener("click",e=>{
       break; }
     case "share-card": { const w=store.current(); const cust=splitIx(store.interactionsFor(w.handle)).cust;
       shareCard(w, T.computeTrust(cust), store.interactionsFor(w.handle).length); break; }
+    case "pilot-submit": {
+      const g=id=>(($("#"+id)||{}).value||"").trim();
+      const email=g("pl-email");
+      if(!email.includes("@")){ toast("Enter a work email so we can reach you"); break; }
+      const lead={ business:g("pl-biz"), contactName:g("pl-name"), email,
+        locations:parseInt(g("pl-loc"),10)||1, role:g("pl-role"), note:"from Vouch for Business" };
+      const done=()=>{ toast("Thanks — we'll be in touch within a day ✓");
+        const c=document.getElementById("pilot"); if(c) c.innerHTML='<div class="center stack-sm"><div class="confetti">📬</div><h3>Request received.</h3><p class="muted">We\'ll reach out to '+esc(email)+' within a day. Thank you for backing worker-owned recognition.</p></div>'; };
+      if(store.sync.status().online && window.Vouch.api){
+        window.Vouch.api.pilotRequest(lead).then(r=>{ if(r&&r.ok) done();
+          else nativeShare("Vouch for Business pilot", "Pilot request:\n"+JSON.stringify(lead,null,2), shareUrl("").replace(/#\/r\/$/,"")).then(done); });
+      } else {
+        // no backend yet → hand the operator the lead via the share sheet (email/notes/messages)
+        nativeShare("Vouch for Business — pilot request",
+          `Business: ${lead.business}\nContact: ${lead.contactName} (${lead.role})\nEmail: ${email}\nLocations: ${lead.locations}`,
+          shareUrl("").replace(/#\/r\/$/,"")).then(done);
+      }
+      break; }
     case "invite-worker": nativeShare("Vouch — own your work",
       "You know how the company owns all your reviews? There's a free app where YOU own them — verified, portable, yours for life. I'm on it:",
       shareUrl("").replace(/#\/r\/$/,"")).then(()=>{ if(!navigator.share) toast("Invite link copied"); }); break;
@@ -1326,6 +1412,7 @@ document.addEventListener("input",e=>{
   else if(a==="a-name") aform.name=t.value;
   else if(a==="signin-email") signin.email=t.value;
   else if(a==="signin-code") signin.code=t.value;
+  else if(a==="rec-mgr-in") recognize.manager=t.value;
   else if(flow){
     if(a==="comment") flow.comment=t.value;
     else if(a==="name") flow.name=t.value;
