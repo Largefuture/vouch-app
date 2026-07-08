@@ -230,6 +230,9 @@ function buildSeed(){
     city:"Phoenix", workplace:"In-home & assisted living", spanDays:760, seed:7077, color:"#7a5cc4",
     headline:"Eight years of care no one ever saw. Now it's witnessed — and it's mine." }, 24, now);
   workers["gloria-mendez"]=gloria.worker; interactions.push(...gloria.interactions);
+  // Tag the whole demo world so it stays LOCAL-ONLY and never syncs to the real backend.
+  Object.values(workers).forEach(w=>{ w.demo=true; });
+  interactions.forEach(i=>{ i.demo=true; });
   return { workers, interactions, session:{ current:"maria-reyes" }, seededAt: now.toISOString() };
 }
 
@@ -259,7 +262,15 @@ async function ensureToken(){
   return false;
 }
 function scheduleSync(){ if(!SYNC.enabled||!SYNC.online) return; clearTimeout(syncTimer); syncTimer=setTimeout(doSync, 900); }
-async function doSync(){ if(!SYNC.enabled) return false; if(!await ensureToken()) return false; SYNC.busy=true; const r=await api().sync(STATE); SYNC.busy=false; if(r&&r.ok){ SYNC.last=Date.now(); } return !!(r&&r.ok); }
+function realState(){
+  // Never push the demo world to the real backend — sync only the worker's OWN records.
+  const workers={}; Object.values(STATE.workers||{}).forEach(w=>{ if(!w.demo) workers[w.handle]=w; });
+  const interactions=(STATE.interactions||[]).filter(i=>!i.demo && workers[i.workerHandle]);
+  return { workers, interactions };
+}
+async function doSync(){ if(!SYNC.enabled) return false;
+  const real=realState(); if(!Object.keys(real.workers).length) return false;  // nothing real to publish yet
+  if(!await ensureToken()) return false; SYNC.busy=true; const r=await api().sync(real); SYNC.busy=false; if(r&&r.ok){ SYNC.last=Date.now(); } return !!(r&&r.ok); }
 async function checkOnline(){ if(!api()){ SYNC.online=false; return false; } const r=await api().health(); SYNC.online=!!(r&&r.ok); if(SYNC.online&&SYNC.enabled) doSync(); return SYNC.online; }
 
 const store = {
