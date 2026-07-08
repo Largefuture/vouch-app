@@ -248,9 +248,19 @@ let SYNC = { online:false, enabled:(()=>{ try{ const v=localStorage.getItem("vou
 let syncTimer=null;
 const api = ()=> (window.Vouch && window.Vouch.api);
 const signedIn = ()=> !!(api() && api().token());
-function scheduleSync(){ if(!SYNC.enabled||!SYNC.online||!signedIn()) return; clearTimeout(syncTimer); syncTimer=setTimeout(doSync, 900); }
-async function doSync(){ if(!signedIn()) return false; SYNC.busy=true; const r=await api().sync(STATE); SYNC.busy=false; if(r&&r.ok){ SYNC.last=Date.now(); } return !!(r&&r.ok); }
-async function checkOnline(){ if(!api()){ SYNC.online=false; return false; } const r=await api().health(); SYNC.online=!!(r&&r.ok); if(SYNC.online&&SYNC.enabled&&signedIn()) doSync(); return SYNC.online; }
+// Frictionless publish: if there's no token yet, silently mint an anonymous device
+// token so the worker's record reaches the server (customers can then vouch). Email
+// sign-in stays optional — only needed to recover on a new device.
+async function ensureToken(){
+  if(signedIn()) return true;
+  if(!api()) return false;
+  const r=await api().authDevice();
+  if(r&&r.ok&&r.token){ api().setToken(r.token); return true; }
+  return false;
+}
+function scheduleSync(){ if(!SYNC.enabled||!SYNC.online) return; clearTimeout(syncTimer); syncTimer=setTimeout(doSync, 900); }
+async function doSync(){ if(!SYNC.enabled) return false; if(!await ensureToken()) return false; SYNC.busy=true; const r=await api().sync(STATE); SYNC.busy=false; if(r&&r.ok){ SYNC.last=Date.now(); } return !!(r&&r.ok); }
+async function checkOnline(){ if(!api()){ SYNC.online=false; return false; } const r=await api().health(); SYNC.online=!!(r&&r.ok); if(SYNC.online&&SYNC.enabled) doSync(); return SYNC.online; }
 
 const store = {
   state(){ return STATE; },

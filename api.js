@@ -2,11 +2,17 @@
    this layer is the OPT-IN cloud mirror, scoped to the signed-in worker via a bearer token.
    Every call fails soft (returns {ok:false}) when offline. */
 (function(){
+  // The hosted production backend. The static app (GitHub Pages, "Add to Home Screen",
+  // or a file:// copy) talks to this automatically — no per-device setup.
+  var BACKEND = "https://vouch-tr3g.onrender.com";
   function defaultBase(){
     if(typeof window!=="undefined" && window.VOUCH_API_BASE!==undefined) return window.VOUCH_API_BASE;
-    if(location.protocol==="file:") return "http://localhost:8077";   // opened as a file
-    if(location.port==="4173") return "http://localhost:8077";         // dev: static app server → API on 8077
-    return "";                                                          // single-origin / production: same origin
+    if(location.hostname==="localhost"||location.hostname==="127.0.0.1"){
+      if(location.port==="4173") return "http://localhost:8077";       // local dev: app server → API on 8077
+      return "";                                                        // local single-origin (uvicorn serving both)
+    }
+    if(location.origin.indexOf("onrender.com")>=0) return "";           // backend serves the app too → same origin
+    return BACKEND;                                                     // Pages / installed / file:// → hosted backend
   }
   function base(){ try{ const v=localStorage.getItem("vouch_api"); return v===null?defaultBase():v; }catch(e){ return defaultBase(); } }
   function token(){ try{ return localStorage.getItem("vouch_token")||""; }catch(e){ return ""; } }
@@ -30,6 +36,7 @@
     qrUrl(h){ return base()+"/api/qr/"+encodeURIComponent(h)+".svg"; },
     health:       ()      => call("GET",  "/api/health"),
     // auth
+    authDevice:   ()      => call("POST", "/api/auth/device"),
     authRequest:  (email) => call("POST", "/api/auth/request", { email }),
     authVerify:   (email,code) => call("POST", "/api/auth/verify", { email, code }),
     me:           ()      => call("GET",  "/api/auth/me"),
