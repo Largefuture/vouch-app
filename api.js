@@ -47,7 +47,6 @@
     deleteWorker: (h)     => call("DELETE","/api/workers/"+encodeURIComponent(h)),
     // public
     record:       (h)     => call("GET",  "/api/workers/"+encodeURIComponent(h)+"/record"),
-    rankings:     (role,city,handle)=> call("GET", "/api/rankings?role="+encodeURIComponent(role||"")+"&city="+encodeURIComponent(city||"")+"&handle="+encodeURIComponent(handle||"")),
     leaderboard:  ()      => call("GET",  "/api/employer/leaderboard"),
     businessDigest:(venue)=> call("GET",  "/api/business/digest?venue="+encodeURIComponent(venue||"")),
     pilotRequest: (body)  => call("POST", "/api/business/pilot", body),

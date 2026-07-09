@@ -110,32 +110,6 @@ function shareCardCanvas(w, tr, total){
   x.fillStyle="#6b6f8a"; x.font="500 34px -apple-system,system-ui,sans-serif"; x.fillText("Verified · portable · worker-owned · free forever",540,1250);
   return c;
 }
-async function shareRankCard(w, rank){
-  try{
-    const c=document.createElement("canvas"); c.width=1080; c.height=1350; const x=c.getContext("2d");
-    const g=x.createLinearGradient(0,0,1080,1350); g.addColorStop(0,"#2a1a5e"); g.addColorStop(1,"#0a0a1e");
-    x.fillStyle=g; x.fillRect(0,0,1080,1350);
-    const glow=(cx,cy,r,col)=>{ const rg=x.createRadialGradient(cx,cy,0,cx,cy,r); rg.addColorStop(0,col); rg.addColorStop(1,"rgba(0,0,0,0)"); x.fillStyle=rg; x.fillRect(cx-r,cy-r,r*2,r*2); };
-    glow(540,120,420,"rgba(255,210,63,.4)"); glow(120,1200,360,"rgba(255,77,109,.28)"); glow(960,1200,360,"rgba(77,139,255,.3)");
-    x.textAlign="center";
-    x.fillStyle="#27e5a4"; x.font="700 52px -apple-system,system-ui,sans-serif"; x.fillText("✓ Vouch",540,150);
-    const headline = rank && rank.rank<=3 ? `#${rank.rank} this week` : (rank?`Top ${rank.pct}% this week`:"On the board this week");
-    x.fillStyle="#ffd23f"; x.font="800 150px -apple-system,system-ui,sans-serif"; x.fillText(rank&&rank.rank<=3?("🏆 #"+rank.rank):("★ "+(rank?rank.pct+"%":"")),540,560);
-    x.fillStyle="#f2f3fb"; x.font="800 66px -apple-system,system-ui,sans-serif";
-    x.fillText((rank&&rank.scope)||w.role, 540, 700);
-    x.fillStyle="#a9adc4"; x.font="600 46px -apple-system,system-ui,sans-serif"; x.fillText(headline+" · "+(w.city||""),540,780);
-    x.fillStyle="#e9eaf5"; x.font="650 44px -apple-system,system-ui,sans-serif";
-    x.fillText("Verified by real customers.",540,1010); x.fillText("This record is mine, for life.",540,1075);
-    x.fillStyle="#7fe3c0"; x.font="600 40px -apple-system,system-ui,sans-serif"; x.fillText(shareUrl(w.handle).replace(/^https?:\/\//,""),540,1170);
-    x.fillStyle="#6b6f8a"; x.font="500 34px -apple-system,system-ui,sans-serif"; x.fillText("Own your work · vouch · free forever",540,1255);
-    const blob=await new Promise(res=>c.toBlob(res,"image/png"));
-    const file=new File([blob],"vouch-rank.png",{type:"image/png"});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:"My Vouch standing", text:`${headline} — ${(rank&&rank.scope)||w.role}. ${shareUrl(w.handle)}`}); return;
-    }
-    const a=document.createElement("a"); a.href=c.toDataURL("image/png"); a.download="vouch-rank.png"; a.click(); toast("Card saved — post it 🎇");
-  }catch(e){ if(String(e).indexOf("Abort")<0) toast("Couldn't create the card"); }
-}
 async function shareCard(w, tr, total){
   try{
     const c=shareCardCanvas(w,tr,total);
@@ -299,13 +273,10 @@ function vWorker(){
       <div class="s"><b>${fmtPct(tr.metrics.organicRatio)}</b><span>unprompted</span></div>
     </div>
 
-    ${(()=>{ const MS=[1,5,10,25,50,100,250,500]; const hit=MS.filter(m=>total>=m).pop();
-      return hit?`<div class="card pad mt" style="border-color:rgba(255,210,63,.4)">
-        <div class="row-between"><div style="display:flex;gap:11px;align-items:center"><span style="font-size:26px">${hit>=100?'🏆':hit>=25?'🎆':'🎉'}</span>
-          <div><b>${hit}+ vouches strong</b><br><small class="muted">That's real, verified proof — worth showing off.</small></div></div>
-          <button class="btn btn-primary btn-sm" style="width:auto" data-act="share-card">🎇 Share card</button></div></div>`:''; })()}
-
-    <div id="rankcard"></div>
+    ${(()=>{ const MS=[10,25,50,100,250,500]; const hit=MS.filter(m=>verified>=m).pop();
+      return hit?`<div class="card pad mt">
+        <div class="row-between"><div><b>${hit} verified vouches</b><br><small class="muted">A milestone on your permanent record.</small></div>
+          <button class="btn btn-ghost btn-sm" style="width:auto" data-act="share-card">Share record</button></div></div>`:''; })()}
 
     ${cust.length>=3?`<button class="btn btn-dark mt" style="width:100%" data-act="goto" data-h="#/recognize">📈 &nbsp;Take this to my manager — ask to be recognized</button>`:''}
     <div class="btn-row mt-s">
@@ -324,29 +295,6 @@ function vWorker(){
     <div class="card pad feed">${cust.slice(0,5).map(fbRow).join("")}</div>
     <p class="center mt"><a class="plain" data-act="seed-feedback">▶ Preview: a customer leaving you a vouch</a></p>`:''}
   </div>${tabbar("#/worker")}`;
-  if(!w.demo) loadRanking(w);   // real workers only: fetch this week's standing among peers
-}
-
-/* weekly standing among same-trade, same-city peers (positive-only, shareable) */
-let lastRank=null;
-async function loadRanking(w){
-  const box=document.getElementById("rankcard"); if(!box||!window.Vouch.api) return;
-  if(!w.city||!w.role) return;
-  const r=await window.Vouch.api.rankings(w.role, w.city, w.handle);
-  if(!r||!r.ok||!r.you||document.getElementById("rankcard")!==box) return;
-  lastRank={scope:r.scope, rank:r.you.rank, of:r.you.of, pct:r.you.percentile};
-  const medal = r.you.rank===1?"🥇":r.you.rank===2?"🥈":r.you.rank===3?"🥉":"🔥";
-  const line = r.you.of<3
-    ? `You're on the board for <b>${esc(r.scope)}</b> this week — be the one others chase.`
-    : (r.you.rank<=3
-        ? `You're <b>#${r.you.rank}</b> of ${r.you.of} <b>${esc(r.scope)}</b> this week ${medal}`
-        : `You're in the <b>top ${r.you.percentile}%</b> of ${esc(r.scope)} this week ${medal}`);
-  box.innerHTML=`<div class="card pad mt" style="border-color:rgba(255,210,63,.45);background:linear-gradient(160deg,rgba(255,210,63,.06),transparent)">
-    <div class="row-between"><div style="display:flex;gap:11px;align-items:center"><span style="font-size:26px">${medal}</span>
-      <div><b>This week in ${esc(w.city)}</b><br><small class="muted">${line}</small></div></div>
-      <button class="btn btn-primary btn-sm" style="width:auto" data-act="share-rank">🎇 Share</button></div>
-    ${r.top&&r.top.length>1?`<div class="chipline" style="margin-top:10px">${r.top.map((t,i)=>`<span class="minichip">${i+1}. ${esc(t.name)} · ${t.recent}</span>`).join("")}</div>`:''}
-  </div>`;
 }
 
 function fbRow(i){
@@ -1401,7 +1349,6 @@ document.addEventListener("click",e=>{
       break; }
     case "share-card": { const w=store.current(); const cust=splitIx(store.interactionsFor(w.handle)).cust;
       shareCard(w, T.computeTrust(cust), store.interactionsFor(w.handle).length); break; }
-    case "share-rank": { const w=store.current(); shareRankCard(w, lastRank); break; }
     case "pilot-submit": {
       const g=id=>(($("#"+id)||{}).value||"").trim();
       const email=g("pl-email");
