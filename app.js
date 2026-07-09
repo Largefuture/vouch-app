@@ -84,30 +84,45 @@ function flowUrl(h){ return shareUrl(h).replace("#/r/","#/f/"); }   // straight 
 
 /* Lite-Brite share card — a 1080×1350 image built on-device (no server, no tracker). */
 function shareCardCanvas(w, tr, total){
+  // A sober, credential-style card — the surface an employer might see. Clean, data-forward,
+  // one restrained accent. No confetti, no medals: legitimacy is the point.
   const c=document.createElement("canvas"); c.width=1080; c.height=1350; const x=c.getContext("2d");
-  const g=x.createLinearGradient(0,0,1080,1350); g.addColorStop(0,"#15163a"); g.addColorStop(1,"#0a0a1e");
+  const g=x.createLinearGradient(0,0,0,1350); g.addColorStop(0,"#12141c"); g.addColorStop(1,"#0b0d13");
   x.fillStyle=g; x.fillRect(0,0,1080,1350);
-  x.fillStyle="rgba(255,255,255,.05)";                                  // peg-board dots
-  for(let py=30;py<1350;py+=44)for(let px=30;px<1080;px+=44){ x.beginPath(); x.arc(px,py,3,0,7); x.fill(); }
-  const glow=(cx,cy,r,col)=>{ const rg=x.createRadialGradient(cx,cy,0,cx,cy,r); rg.addColorStop(0,col); rg.addColorStop(1,"rgba(0,0,0,0)"); x.fillStyle=rg; x.fillRect(cx-r,cy-r,r*2,r*2); };
-  glow(140,120,340,"rgba(255,77,109,.32)"); glow(940,140,340,"rgba(77,139,255,.35)"); glow(540,1240,420,"rgba(39,229,164,.25)");
+  const AC="#12b886", INK="#f2f3f6", MUT="#9aa0ad";
+  x.fillStyle=AC; x.fillRect(0,0,1080,8);                                // top accent hairline
+  x.strokeStyle="rgba(255,255,255,.08)"; x.lineWidth=2; x.strokeRect(56,56,968,1238);  // certificate frame
   x.textAlign="center";
-  x.fillStyle="#27e5a4"; x.font="700 54px -apple-system,system-ui,sans-serif"; x.fillText("✓ Vouch",540,150);
-  x.fillStyle="#f2f3fb"; x.font="800 92px -apple-system,system-ui,sans-serif";
-  const name=(w.name||"").slice(0,18); x.fillText(name,540,420);
-  x.fillStyle="#a9adc4"; x.font="600 46px -apple-system,system-ui,sans-serif"; x.fillText((w.role||"")+(w.city?" · "+w.city:""),540,495);
+  x.fillStyle=MUT; x.font="700 34px -apple-system,system-ui,sans-serif";
+  x.fillText("✓  V O U C H   ·   V E R I F I E D   S E R V I C E   R E C O R D", 540, 168);
+  x.fillStyle=INK; x.font="800 96px -apple-system,system-ui,sans-serif";
+  x.fillText((w.name||"").slice(0,20), 540, 350);
+  x.fillStyle=MUT; x.font="500 46px -apple-system,system-ui,sans-serif";
+  x.fillText((w.role||"")+(w.city?"  ·  "+w.city:""), 540, 420);
+  const verified = tr && tr.metrics ? (tr.metrics.V||0) : 0;
   if(tr&&tr.score>0){
-    x.strokeStyle="#27e5a4"; x.lineWidth=16; x.shadowColor="#27e5a4"; x.shadowBlur=40;
-    x.beginPath(); x.arc(540,780,190,-Math.PI/2,-Math.PI/2+2*Math.PI*Math.min(1,tr.score/1000)); x.stroke(); x.shadowBlur=0;
-    x.fillStyle="#fff"; x.font="800 130px -apple-system,system-ui,sans-serif"; x.fillText(String(tr.score),540,810);
-    x.fillStyle="#a9adc4"; x.font="600 40px -apple-system,system-ui,sans-serif"; x.fillText("Vouch Trust Score · grade "+tr.grade,540,890);
+    x.strokeStyle="rgba(255,255,255,.10)"; x.lineWidth=14;
+    x.beginPath(); x.arc(540,700,150,0,2*Math.PI); x.stroke();
+    x.strokeStyle=AC; x.lineWidth=14; x.lineCap="round";
+    x.beginPath(); x.arc(540,700,150,-Math.PI/2,-Math.PI/2+2*Math.PI*Math.min(1,tr.score/1000)); x.stroke(); x.lineCap="butt";
+    x.fillStyle=INK; x.font="800 108px -apple-system,system-ui,sans-serif"; x.fillText(String(tr.score),540,725);
+    x.fillStyle=MUT; x.font="600 34px -apple-system,system-ui,sans-serif"; x.fillText("of 1000",540,772);
+    x.fillStyle=INK; x.font="700 44px -apple-system,system-ui,sans-serif"; x.fillText("Trust Score · Grade "+tr.grade,540,900);
   } else {
-    x.fillStyle="#ffd23f"; x.font="800 100px -apple-system,system-ui,sans-serif"; x.fillText("★ "+total+" vouches",540,800);
+    x.fillStyle=INK; x.font="800 104px -apple-system,system-ui,sans-serif"; x.fillText(String(verified||total),540,720);
+    x.fillStyle=MUT; x.font="600 40px -apple-system,system-ui,sans-serif"; x.fillText("verified vouches",540,780);
   }
-  x.fillStyle="#e9eaf5"; x.font="650 44px -apple-system,system-ui,sans-serif";
-  x.fillText("I own the proof of how I treat people.",540,1080);
-  x.fillStyle="#7fe3c0"; x.font="600 40px -apple-system,system-ui,sans-serif"; x.fillText(shareUrl(w.handle).replace(/^https?:\/\//,""),540,1160);
-  x.fillStyle="#6b6f8a"; x.font="500 34px -apple-system,system-ui,sans-serif"; x.fillText("Verified · portable · worker-owned · free forever",540,1250);
+  // credibility stat row
+  const stat=(cx,big,lab)=>{ x.fillStyle=INK; x.font="800 56px -apple-system,system-ui,sans-serif"; x.fillText(big,cx,1010);
+    x.fillStyle=MUT; x.font="500 30px -apple-system,system-ui,sans-serif"; x.fillText(lab,cx,1055); };
+  const pct=v=>Math.round((v||0)*100)+"%";
+  stat(320, String(verified), "verified customers");
+  stat(760, tr&&tr.metrics?pct(tr.metrics.repeatRate):"—", "return for them");
+  x.strokeStyle="rgba(255,255,255,.08)"; x.beginPath(); x.moveTo(160,1110); x.lineTo(920,1110); x.stroke();
+  x.fillStyle=INK; x.font="600 40px -apple-system,system-ui,sans-serif";
+  x.fillText(shareUrl(w.handle).replace(/^https?:\/\//,""), 540, 1180);
+  x.fillStyle=MUT; x.font="500 32px -apple-system,system-ui,sans-serif";
+  x.fillText("Verified by real customers · owned by the worker", 540, 1235);
   return c;
 }
 async function shareCard(w, tr, total){

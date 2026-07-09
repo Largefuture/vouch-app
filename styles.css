@@ -336,9 +336,9 @@ input::placeholder,textarea::placeholder{color:var(--ink-3);opacity:.75}
 .qr{box-shadow:0 0 26px rgba(77,139,255,.45),var(--shadow)}
 .qr i{background:#0e0f13}
 
-/* record header → night-sky fireworks */
-.record-hd{background:linear-gradient(160deg,#171338,#2a1a5e 55%,#3a1450)}
-.record-hd::after{background:radial-gradient(circle,rgba(255,210,63,.4),transparent 70%)}
+/* record header → sober, credential-grade (employer-facing; deliberately NOT carnival) */
+.record-hd{background:linear-gradient(160deg,#12141c,#0f1620)}
+.record-hd::after{background:radial-gradient(circle,rgba(18,184,134,.18),transparent 70%)}
 
 /* the printable "Verified Service Record" stays a light paper document */
 .print-doc{background:#fff;color:#141519}
