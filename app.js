@@ -827,31 +827,48 @@ function vExport(handle){
   const verified=cust.filter(i=>T.isVerified(i.authSignals)).length;
   const total=cust.length+attest.length;
   const d=new Date();
-  app.innerHTML = `<div class="printbar"><b>Your portable record</b><div class="spacer" style="flex:1"></div>
+  // stable, human-readable record id for the certificate ("VCH-XXXXXX")
+  let hh=0; for(let i=0;i<w.handle.length;i++) hh=(hh*131+w.handle.charCodeAt(i))>>>0;
+  const recId="VCH-"+hh.toString(36).toUpperCase().padStart(6,"0").slice(0,6);
+  const issued=d.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"});
+  app.innerHTML = `<div class="printbar"><b>Verified Service Record</b><div class="spacer" style="flex:1"></div>
       <button class="btn btn-primary btn-sm" data-act="do-print">⬇ Print / Save as PDF</button>
       <button class="btn btn-ghost btn-sm" data-act="copy" data-v="${shareUrl(w.handle)}">Copy link</button>
       <button class="ghost-btn" data-act="goto" data-h="#/r/${w.handle}">Close</button></div>
-    <div class="shell wide print-doc fade" style="padding-top:18px;padding-bottom:60px">
-      <div class="row-between" style="border-bottom:2px solid var(--ink);padding-bottom:14px">
-        <div><div style="display:flex;align-items:center;gap:8px"><span class="seal">✓</span><b style="font-size:17px">Vouch · Verified Service Record</b></div>
-          <h1 class="serif" style="font-size:28px;margin-top:8px">${esc(w.name)}</h1>
-          <div class="muted">${esc(w.role)}${w.city?" · "+esc(w.city):""}</div></div>
-        <div class="center">${cust.length?`<span class="grade-badge" style="background:${gradeColor(tr.grade)}">${tr.grade}</span><div style="margin-top:4px">${tierBadge(tr.tier)}</div>`:`<span class="pill" style="background:#efeaf9;color:#7a5cc4">Witnessed record</span>`}</div>
+    <div class="shell wide print-doc fade" style="padding-top:26px;padding-bottom:60px">
+      <div class="cert">
+        <div class="cert-head">
+          <div class="cert-brand"><span class="cert-seal">✓</span>
+            <div><div class="cert-mark">VOUCH</div><div class="cert-sub">Verified Service Record</div></div></div>
+          <div class="cert-meta">Record ${recId}<br>Issued ${issued}</div>
+        </div>
+
+        <div class="cert-subject">
+          <div><h1 class="serif cert-name">${esc(w.name)}</h1>
+            <div class="cert-role">${esc(w.role)}${w.city?" · "+esc(w.city):""}</div></div>
+          <div class="center">${cust.length?`<span class="grade-badge" style="background:${gradeColor(tr.grade)}">${tr.grade}</span><div style="margin-top:6px">${tierBadge(tr.tier)}</div>`:`<span class="pill" style="background:#eef0f4;color:#4a4f5a;border-color:#dfe2e8">Witnessed record</span>`}</div>
+        </div>
+        ${w.headline?`<p class="serif cert-quote">“${esc(w.headline)}”</p>`:''}
+
+        <div class="cert-stats">
+          <div class="k"><b>${total}</b><span>lifetime vouches</span></div>
+          ${cust.length?`<div class="k"><b>${verified}</b><span>verified customers</span></div>
+          <div class="k"><b>${fmtPct(tr.metrics.repeatRate)}</b><span>return by name</span></div>`:''}
+          <div class="k"><b>${refs.length+attest.filter(a=>a.contactable).length}</b><span>contactable</span></div>
+          <div class="k"><b>${tr.metrics.spanMonths?tr.metrics.spanMonths.toFixed(0):'—'} mo</b><span>track record</span></div>
+        </div>
+
+        ${refs.length?`<h3 class="cert-h">Customer references — consented &amp; contactable</h3>
+        <div class="stack-sm">${refs.map(r=>`<div class="ref"><div class="q">“${esc(r.comment)}”</div><div class="by"><b>${esc(r.customerName)}</b> · verified customer · ✓ OK to contact</div></div>`).join("")}</div>`:''}
+        ${attest.length?`<h3 class="cert-h">Witnessed by colleagues &amp; families</h3>
+        <div class="stack-sm">${attest.slice(0,8).map(a=>`<div class="ref" style="border-left-color:#8a94a6"><div class="q">“${esc(a.comment)}”</div><div class="by"><b>${esc(a.attestorName)}</b> · ${esc(a.attestorRelation)} · ${esc(a.attestorTenure)}</div></div>`).join("")}</div>`:''}
+
+        <div class="cert-verify">
+          <div class="cert-seal lg">✓</div>
+          <div><b>Authenticity</b><br>Every entry was verified when it was left — by phone, location, receipt, or a verified colleague/family witness. Confirm this record live at <b>${shareUrl(w.handle)}</b> (Record ${recId}). Owned by the worker · positive-only · cannot be altered by any employer.</div>
+        </div>
+        <div class="cert-foot">Issued ${issued} · Vouch — the Worker Reputation Bill of Rights · ${shareUrl(w.handle)}</div>
       </div>
-      ${w.headline?`<p class="serif mt" style="font-size:16px">"${esc(w.headline)}"</p>`:''}
-      <div class="kpi-inline mt" style="gap:22px">
-        <div class="k"><b>${total}</b><span>lifetime vouches</span></div>
-        ${cust.length?`<div class="k"><b>${verified}</b><span>verified customers</span></div>
-        <div class="k"><b>${fmtPct(tr.metrics.repeatRate)}</b><span>return by name</span></div>`:''}
-        <div class="k"><b>${refs.length+attest.filter(a=>a.contactable).length}</b><span>contactable</span></div>
-        <div class="k"><b>${tr.metrics.spanMonths?tr.metrics.spanMonths.toFixed(0):'—'} mo</b><span>track record</span></div>
-      </div>
-      ${refs.length?`<h3 class="mt" style="margin:18px 0 8px">Customer references (consented, contactable)</h3>
-      <div class="stack-sm">${refs.map(r=>`<div class="ref"><div class="q">"${esc(r.comment)}"</div><div class="by"><b>${esc(r.customerName)}</b> · verified customer · ✓ OK to contact</div></div>`).join("")}</div>`:''}
-      ${attest.length?`<h3 class="mt" style="margin:18px 0 8px">Witnessed by colleagues &amp; families</h3>
-      <div class="stack-sm">${attest.slice(0,8).map(a=>`<div class="ref" style="border-left-color:#7a5cc4"><div class="q">"${esc(a.comment)}"</div><div class="by"><b>${esc(a.attestorName)}</b> · ${esc(a.attestorRelation)} · ${esc(a.attestorTenure)}</div></div>`).join("")}</div>`:''}
-      <div class="note mt" style="margin-top:18px"><span class="nico">🛡️</span><div class="ntxt"><b>How to verify this record:</b> every entry was verified at the time it was left (phone, location, receipt, or a verified colleague/family witness). Confirm it live at <b>${shareUrl(w.handle)}</b>. This record is <b>owned by the worker</b>, positive-only, and cannot be altered by any employer.</div></div>
-      <p class="muted mt" style="font-size:12px">Generated ${d.toLocaleDateString()} · Vouch — the Worker Reputation Bill of Rights</p>
     </div>`;
 }
 

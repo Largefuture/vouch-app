@@ -349,6 +349,37 @@ input::placeholder,textarea::placeholder{color:var(--ink-3);opacity:.75}
 .print-doc .record-hd,.print-doc .record-hd b{color:#fff}
 .print-doc .record-hd .muted,.print-doc .watermark-seal{color:#a7abb8}
 
+/* --- Verified Service Record certificate (sober, credential-grade, always dark-on-white) --- */
+.cert{max-width:720px;margin:0 auto;color:#14161c;font-size:15px}
+.cert-head{display:flex;justify-content:space-between;align-items:flex-start;
+  padding-bottom:16px;border-bottom:2px solid #14161c}
+.cert-brand{display:flex;align-items:center;gap:12px}
+.cert-seal{width:34px;height:34px;border-radius:50%;background:#12b886;color:#fff;
+  display:grid;place-items:center;font-size:18px;font-weight:800;box-shadow:none;flex:none}
+.cert-seal.lg{width:44px;height:44px;font-size:23px}
+.cert-mark{font-weight:800;letter-spacing:.22em;font-size:18px;color:#14161c}
+.cert-sub{font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:#6a707e;margin-top:2px}
+.cert-meta{text-align:right;font-size:12px;color:#6a707e;line-height:1.6;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.cert-subject{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:20px}
+.cert-name{font-size:32px;line-height:1.1;color:#14161c;margin:0}
+.cert-role{font-size:15px;color:#6a707e;margin-top:6px}
+.cert-quote{font-size:17px;color:#2a2e38;margin-top:16px;line-height:1.5}
+.cert-stats{display:flex;flex-wrap:wrap;gap:26px;margin:22px 0 4px;
+  padding:16px 0;border-top:1px solid #e4e7ec;border-bottom:1px solid #e4e7ec}
+.cert-stats .k b{display:block;font-size:24px;font-weight:800;color:#14161c;letter-spacing:-.02em}
+.cert-stats .k span{font-size:12px;color:#6a707e}
+.cert-h{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:#6a707e;
+  font-weight:700;margin:24px 0 10px;padding-bottom:6px;border-bottom:1px solid #e4e7ec}
+.print-doc .cert .ref{border-left:3px solid #12b886;padding:2px 0 2px 14px;margin-bottom:2px}
+.print-doc .cert .ref .q{font-family:var(--serif);font-size:15px;color:#22262f;line-height:1.5}
+.print-doc .cert .ref .by{font-size:12.5px;color:#6a707e;margin-top:5px}
+.cert-verify{display:flex;gap:14px;align-items:flex-start;margin-top:26px;padding:16px 18px;
+  background:#f6f8f7;border:1px solid #dfe6e2;border-radius:12px;font-size:13.5px;color:#3a3f49;line-height:1.55}
+.cert-foot{margin-top:20px;padding-top:14px;border-top:1px solid #e4e7ec;
+  font-size:11.5px;color:#8a909c;text-align:center}
+@media print{ .cert{max-width:100%} }
+
 /* =========================================================================
    VISUAL + MOTION LAYER — illustrations, swipeable slides, celebration.
    Less text, more show. Everything self-contained (no external assets).
