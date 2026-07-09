@@ -658,45 +658,59 @@ function businessDigest(){
 }
 function vEmployer(){
   const d=businessDigest();
+  const csat = d.avg?Math.round(d.avg/5*100):0;
+  const maxTheme = d.themes.length?d.themes[0].count:1;
   app.innerHTML = topbar()+`<div class="shell wide fade">
-    <div style="padding:18px 2px"><div class="eyebrow">Vouch for Business</div>
-      <h1 class="serif" style="font-size:26px;margin-top:4px">The point-of-service feedback your surveys can't get.</h1>
-      <p class="lead mt-s">Your "How did we do?" email gets a 2% reply — mostly from the angriest customers. Vouch feedback is left <b>at the moment of service</b>, by a real person, <b>verified</b> against phone, receipt, location or your POS. It's the most authentic voice-of-customer data in your building — and it comes with the name of the employee who earned it.</p></div>
+    <div style="padding:18px 2px"><div class="eyebrow">Vouch for Business · Verified Voice of Customer</div>
+      <h1 class="serif" style="font-size:26px;margin-top:4px">Customer feedback that's actually verified — and actually gets collected.</h1>
+      <p class="lead mt-s">Vouch belongs to the worker; it's their record, free for life. But because front-line people finally <b>own</b> verified proof of how they treat customers, they collect it — solving the one problem no survey vendor can. You get authentic, point-of-service voice-of-customer data, credited to the person who earned it. Paying for access is what keeps Vouch free for workers.</p></div>
 
-    <div class="stats">
-      <div class="s"><b>${d.n}</b><span>verified customer notes</span></div>
-      <div class="s"><b>${d.avg?d.avg.toFixed(1):'—'}★</b><span class="sub">avg at point of service</span></div>
-      <div class="s"><b>${Math.round(d.verifiedRate*100)}%</b><span>transaction-verified</span></div>
-      <div class="s"><b>${d.staff.length}</b><span>staff recognized</span></div>
+    <div class="note"><span class="nico">◆</span><div class="ntxt"><b>Why it's trustworthy is exactly why it's ethical — one guarantee, not two.</b> Every response is <b>customer-consented</b> and <b>verification-stamped</b> (phone, receipt, location, or POS). That auditability is what you can trust; that consent is what protects the worker. We can't give you one without the other — and we never sell a worker's private record, ranking, or any negative signal.</div></div>
+
+    <h3 class="mt" style="margin-bottom:8px">Verified VoC Report <span class="muted" style="font-weight:500;font-size:12px">— sample · last 30 days · one location</span></h3>
+    <div class="card pad-lg">
+      <div class="stats" style="border:none;background:transparent;gap:0">
+        <div class="s" style="background:transparent"><b>${d.n}</b><span>verified responses</span></div>
+        <div class="s" style="background:transparent"><b>${csat}%</b><span class="sub">verified CSAT</span></div>
+        <div class="s" style="background:transparent"><b>${Math.round(d.verifiedRate*100)}%</b><span>transaction-verified</span></div>
+        <div class="s" style="background:transparent"><b>${d.staff.length}</b><span>employees recognized</span></div>
+      </div>
+      ${d.themes.length?`<div class="divider"></div><b style="font-size:13px">Top drivers customers named</b>
+      <div class="bars mt-s">${d.themes.slice(0,6).map(t=>`<div class="bar-row"><span class="lbl">${esc(t.tag)}</span><span class="val">${t.count}</span><div class="track"><i style="width:${Math.round(t.count/maxTheme*100)}%"></i></div></div>`).join("")}</div>`:''}
+      <p class="muted mt-s" style="font-size:11.5px">Every response above is consented and verification-stamped. Real reports are per-location and delivered weekly.</p>
     </div>
 
-    <h3 class="mt" style="margin-bottom:8px">Why it beats your current survey</h3>
-    <div class="card pad stack-sm">
-      ${[["📉→📈","Response rate","Emailed CSAT/NPS: ~2% reply, days later, skewed to complaints. Vouch: captured in the moment, from customers happy enough to act — real signal, not just noise."],
-         ["✅","Impossible to fake","Every note is checked against phone, receipt, geofence, or your POS transaction log. Our integrity engine discards bursty, single-source, or purchased reviews before you ever see them."],
-         ["🙋","Attributed to a person","You finally see which employees customers rave about, by name — the recognition data you can't buy and your survey never captures."],
-         ["🎯","Themes, not vanity","Aggregated tags (speed, warmth, problem-solving) show what's working across a location — coaching signal, not a star average."]]
-        .map(x=>`<div style="display:flex;gap:11px;align-items:flex-start;padding:6px 0"><span style="font-size:17px">${x[0]}</span><div><b style="font-size:14px">${x[1]}</b><br><small class="muted">${x[2]}</small></div></div>`).join('<div class="divider" style="margin:0"></div>')}
+    <h3 class="mt" style="margin-bottom:8px">How it compares to your current CX stack</h3>
+    <div class="card pad">
+      ${[["Response behavior","Emailed NPS/CSAT: low single-digit response, days later, skewed to the angriest.","Captured at the moment of service, by customers motivated to lift a specific person."],
+         ["Authenticity","Self-reported and easily gamed — coached 10s, withheld surveys, purchased reviews.","Verified against phone, receipt, location or POS; an integrity engine discards farmed or single-source bursts."],
+         ["Attribution","Store-level and anonymous — you can't see who created the experience.","Credited to the named employee (positive-only) — recognition data you can't buy."],
+         ["Cost & effort","Enterprise contracts, admins, dashboards no one opens.","A fraction of the cost — workers collect because they own the record."],
+         ["Auditability","Vendor black box.","Every datapoint carries its consent + verification stamp."]]
+        .map((r,i)=>`<div style="padding:9px 0;${i?'border-top:1px solid var(--line-2)':''}">
+          <b style="font-size:13.5px">${esc(r[0])}</b>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:5px">
+            <div><small class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.06em">Legacy survey</small><br><small class="muted">${esc(r[1])}</small></div>
+            <div><small style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--emerald-d)">Vouch</small><br><small style="color:var(--ink-2)">${esc(r[2])}</small></div>
+          </div></div>`).join("")}
     </div>
 
-    ${d.themes.length?`<h3 class="mt" style="margin-bottom:8px">What your customers are praising</h3>
-    <div class="card pad"><div class="chipline">${d.themes.map(t=>`<span class="minichip">${esc(t.tag)} · ${t.count}</span>`).join("")}</div></div>`:''}
-
-    ${d.staff.length?`<h3 class="mt" style="margin-bottom:8px">Recognize your best people <span class="muted" style="font-weight:500;font-size:12px">— positive only, never a ranking</span></h3>
+    ${d.staff.length?`<h3 class="mt" style="margin-bottom:8px">Team recognition <span class="muted" style="font-weight:500;font-size:12px">— positive-only · never a ranking or a scorecard</span></h3>
     <div class="card pad">${d.staff.map((s,i)=>`<div class="lb" style="border-bottom:${i<d.staff.length-1?'1px solid var(--line-2)':'none'}">
-        <div class="rank">${i+1}</div>
+        ${avatar({name:s.name},'sm')}
         <div class="body"><b>${esc(s.name)}</b> <small class="muted">· ${esc(s.role)}</small>
-          <div style="margin-top:3px"><small class="muted">${s.shared} customers spoke up · ${s.avg.toFixed(1)}★ avg</small></div></div>
-        <div class="sc"><span class="pill em">★ recognized</span></div></div>`).join("")}</div>`:''}
+          <div style="margin-top:3px"><small class="muted">${s.shared} customers spoke up · ${Math.round(s.avg/5*100)}% CSAT</small></div></div>
+        <div class="sc"><span class="pill em">recognized</span></div></div>`).join("")}</div>
+    <p class="muted mt-s" style="font-size:11.5px">Delivered as recognition for managers — never as a stack-rank, quota, or basis for discipline. That line is enforced in the product.</p>`:''}
 
-    ${d.highlights.length?`<h3 class="mt" style="margin-bottom:8px">Sample of what you'd receive</h3>
-    <div class="card pad feed">${d.highlights.map(h=>`<div class="fb"><div class="avatar sm" style="background:linear-gradient(135deg,#b8852a,#1b1d24)">${initials(h.worker)}</div>
+    ${d.highlights.length?`<h3 class="mt" style="margin-bottom:8px">Sample verified responses</h3>
+    <div class="card pad feed">${d.highlights.map(h=>`<div class="fb"><div class="avatar sm" style="background:linear-gradient(135deg,#5a6474,#20242c)">${initials(h.worker)}</div>
       <div class="body"><div class="row-between"><span class="stars">${stars(h.rating)}</span><small class="muted">${timeAgo(h.when)}</small></div>
         <div class="q">${esc(h.comment)}</div>
         <div class="chipline">${(h.chips||[]).map(c=>`<span class="minichip">${esc(c)}</span>`).join("")}</div>
         <div class="meta"><span>for <b>${esc(h.worker)}</b> · ${esc(h.role)}</span>${h.sigs.length?`<span class="verified-tag">✓ ${esc(h.sigs.slice(0,2).join(" · "))}</span>`:''}${h.customer?`<span class="pill" style="padding:2px 8px;font-size:10.5px">from ${esc(h.customer)}</span>`:'<span class="pill" style="padding:2px 8px;font-size:10.5px">anonymous</span>'}</div></div></div>`).join('<div class="divider"></div>')}</div>`:''}
 
-    <div class="note ink mt"><span class="nico">🤝</span><div class="ntxt"><b>The deal that keeps everyone honest.</b> The business pays for this verified feedback channel — which is what makes Vouch <b>free for workers, forever</b>. You never receive negative scores, worker rankings, or any worker's private portable record. You get what the customer chose to share, with the employee credited. <a class="plain" style="color:#7fe3c0" data-act="goto" data-h="#/privacy">How the boundary is enforced →</a></div></div>
+    <div class="note ink mt"><span class="nico">◆</span><div class="ntxt"><b>The boundary that keeps this honest.</b> You never receive negative scores, worker rankings, or any worker's private portable record. You get what customers chose to share, with the employee credited. Workers can revoke sharing anytime. This is why advocates and workers trust it — and why the data is real. <a class="plain" style="color:#7fe3c0" data-act="goto" data-h="#/privacy">How the boundary is enforced →</a></div></div>
 
     <div class="card pad-lg mt stack-sm" id="pilot">
       <h3>Pilot Vouch for Business — free while we onboard</h3>
