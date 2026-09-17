@@ -1423,7 +1423,10 @@ document.addEventListener("click",e=>{
     case "delete-data": { if(!confirmDelete){ confirmDelete=true; vSettings(); } else { const w=store.current(); store.deleteWorker(w.handle); confirmDelete=false; toast("Your record was permanently deleted"); go("#/"); } break; }
     case "signin-request": { const email=(signin.email||"").trim(); if(!email.includes("@")){ toast("Enter a valid email"); break; }
       signin.busy=true; renderSignin();
-      store.auth.request(email).then(r=>{ signin.busy=false; if(r&&r.ok){ signin.step=1; signin.devCode=r.devCode||""; if(r.devCode) signin.code=r.devCode; toast(r.emailed?"Code sent to your email":"Dev code ready"); } else toast("Couldn't reach the server"); renderSignin(); }); break; }
+      store.auth.request(email).then(r=>{ signin.busy=false;
+      if(r&&r.ok&&(r.emailed||r.devCode)){ signin.step=1; signin.devCode=r.devCode||""; if(r.devCode) signin.code=r.devCode; toast(r.emailed?"Code sent to your email":"Dev code ready"); }
+      else if(r&&r.ok){ toast("Email sign-in isn't switched on yet — your record is safe on this device"); }
+      else toast("Couldn't reach the server"); renderSignin(); }); break; }
     case "signin-verify": { const code=(signin.code||"").replace(/\D/g,""); signin.busy=true; renderSignin();
       store.auth.verify((signin.email||"").trim(), code).then(r=>{ signin.busy=false; if(r&&r.ok){ toast("Signed in ✓ — your record is backed up"); signin={step:0,email:"",code:"",devCode:"",busy:false}; go("#/settings"); } else { toast("Invalid or expired code"); renderSignin(); } }); break; }
     case "signin-back": signin.step=0; signin.code=""; signin.devCode=""; renderSignin(); break;

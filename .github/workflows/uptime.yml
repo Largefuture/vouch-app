@@ -1,0 +1,80 @@
+# Vouch backend watchdog — lives in the PUBLIC repo (unlimited free Actions minutes).
+# Every 10 min: GET /api/health. Healthy = HTTP 200 AND body.status == "ok" (the server answers 200
+# even when "degraded", so the BODY is the signal). Down → open/update a DOWN issue (that emails the
+# owner); recovered → close it. A monthly empty commit keeps GitHub from auto-disabling the schedule
+# after 60 days of repo inactivity. Step outputs are passed as env vars, never interpolated into
+# shell (script-injection safe).
+name: uptime
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+    - cron: "0 12 1 * *"
+  workflow_dispatch:
+permissions:
+  issues: write
+  contents: write
+  actions: write
+jobs:
+  ping:
+    if: github.event.schedule != '0 12 1 * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HEALTH_URL: https://vouch-tr3g.onrender.com/api/health
+      TITLE: "🚨 Vouch backend is DOWN"
+    steps:
+      - name: Check health
+        id: health
+        shell: bash
+        run: |
+          set +e
+          code=$(curl -sS -m 90 -o body.json -w '%{http_code}' "$HEALTH_URL" 2>curl.err)
+          [ -s body.json ] || cp curl.err body.json 2>/dev/null || true
+          app=$(jq -r '.status // "unknown"' body.json 2>/dev/null || echo unknown)
+          if [ "${code:-000}" = "200" ] && [ "$app" = "ok" ]; then healthy=true; else healthy=false; fi
+          {
+            echo "healthy=$healthy"; echo "code=${code:-000}"; echo "app=$app"
+            echo "body<<EOB"; head -c 1500 body.json 2>/dev/null; echo; echo "EOB"
+          } >> "$GITHUB_OUTPUT"
+          echo "health -> HTTP ${code:-000} · status=$app · healthy=$healthy"
+      - name: Open or update the DOWN issue
+        if: steps.health.outputs.healthy != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CODE: ${{ steps.health.outputs.code }}
+          APP: ${{ steps.health.outputs.app }}
+          BODY: ${{ steps.health.outputs.body }}
+        run: |
+          existing=$(gh issue list --state open --limit 100 --json number,title | jq -r --arg t "$TITLE" '.[] | select(.title==$t) | .number' | head -1)
+          note=$(printf '%s\n' \
+            "**Health check failed** at $(date -u +'%Y-%m-%d %H:%M UTC') — HTTP \`$CODE\`, app status \`$APP\`" \
+            '```' "$BODY" '```' \
+            "**Most likely causes** → Render dashboard: (1) the Postgres database expired/was deleted (free DBs die after 30 days) — Blueprints → vouch → Manual Sync recreates it; (2) the service is suspended or crash-looping — open vouch → Logs, or Resume Service." \
+            "Guide: https://claude.ai/code/artifact/cacf6a18-f174-4530-a759-55bfa84fd088")
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$note"
+          else
+            gh issue create --title "$TITLE" --body "$note" --label uptime 2>/dev/null || gh issue create --title "$TITLE" --body "$note"
+          fi
+      - name: Close the DOWN issue on recovery
+        if: steps.health.outputs.healthy == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for n in $(gh issue list --state open --limit 100 --json number,title | jq -r --arg t "$TITLE" '.[] | select(.title==$t) | .number'); do
+            gh issue close "$n" --comment "✅ Backend recovered at $(date -u +'%Y-%m-%d %H:%M UTC') — health status ok."
+          done
+  keepalive:
+    if: github.event.schedule == '0 12 1 * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Empty commit so GitHub never auto-disables the schedule
+        run: |
+          git config user.name "vouch-watchdog"; git config user.email "watchdog@users.noreply.github.com"
+          git commit --allow-empty -m "chore: keep scheduled workflows alive" && git push
