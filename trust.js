@@ -2,24 +2,30 @@
    Every number a worker or hiring manager sees can be traced back to this file. Transparency IS trust. */
 
 const AUTH_WEIGHTS = {
-  phone_otp: 0.20, geofence: 0.20, receipt: 0.35,
+  phone_otp: 0.20, geofence: 0.20, receipt: 0.15,
   payment: 0.45, pos: 0.50, contactable_ref: 0.40,
 };
 const AUTH_LABEL = {
-  phone_otp: "Phone-verified", geofence: "On-premises", receipt: "Receipt-matched",
+  phone_otp: "Phone-verified", geofence: "On-premises", receipt: "Receipt corroborated (unverified)",
   payment: "Payment-linked", pos: "POS-linked", contactable_ref: "Contactable reference",
 };
 
 const WEIGHTS = { volume:0.25, depth:0.25, consistency:0.15, organic:0.10, loyalty:0.15, reference:0.10 };
 
+const sigList = s => Array.isArray(s) ? s : [];          // corrupted local data must not throw
 function compositeAuthStrength(signals){
-  const s = (signals||[]).reduce((a,sig)=> a + (AUTH_WEIGHTS[sig]||0), 0);
+  // each signal counts ONCE (a repeated "receipt" must not stack)
+  const s = [...new Set(sigList(signals))].reduce((a,sig)=> a + (AUTH_WEIGHTS[sig]||0), 0);
   return Math.min(s, 1.0);
 }
+// an unparseable date must never poison the score (NaN); it sorts to the beginning of time
+const safeTime = iso => { const t = new Date(iso).getTime(); return Number.isFinite(t) ? t : 0; };
 
 function isVerified(signals){
-  const s = new Set(signals||[]);
-  return s.has("receipt") || s.has("payment") || s.has("pos") || (s.has("phone_otp") && s.has("geofence"));
+  // A VERIFIED service event needs evidence an independent party produced. Receipt TEXT is only
+  // corroboration (it can be re-typed), so it never verifies an event on its own.
+  const s = new Set(sigList(signals));
+  return s.has("payment") || s.has("pos") || (s.has("phone_otp") && s.has("geofence"));
 }
 
 const MS_MONTH = 1000*60*60*24*30.44;
@@ -32,7 +38,7 @@ function computeIntegrity(interactions, byCust, n){
   if (maxShare > 0.4) penalty += Math.min((maxShare - 0.4) * 1.0, 0.4);
   // burst: >=5 interactions from same customer inside any 10-minute window
   const groups = {};
-  interactions.forEach(i=>{ (groups[i.customerHash] = groups[i.customerHash]||[]).push(new Date(i.createdAt).getTime()); });
+  interactions.forEach(i=>{ (groups[i.customerHash] = groups[i.customerHash]||[]).push(safeTime(i.createdAt)); });
   let burst = false;
   Object.values(groups).forEach(ts=>{
     ts.sort((a,b)=>a-b);
@@ -63,6 +69,13 @@ function emptyTrust(){
 
 function computeTrust(interactions, now){
   now = now || new Date();
+  // the same event can only count once, whatever the caller passed
+  const seen = new Set();
+  interactions = (interactions||[]).filter(i => {
+    if (!i) return false;
+    if (i.origin === "client") return false;        // device-typed rows carry no evidence and earn no score
+    const k = i.serverId || i.id; if (!k) return true;
+    if (seen.has(k)) return false; seen.add(k); return true; });
   const n = interactions.length;
   if (n === 0) return emptyTrust();
 
@@ -70,7 +83,7 @@ function computeTrust(interactions, now){
   const depth = strengths.reduce((a,b)=>a+b,0)/n;
   const V = interactions.filter(i => isVerified(i.authSignals)).length;
 
-  const times = interactions.map(i=> new Date(i.createdAt).getTime()).sort((a,b)=>a-b);
+  const times = interactions.map(i=> safeTime(i.createdAt)).sort((a,b)=>a-b);
   const spanMonths = (times[times.length-1] - times[0]) / MS_MONTH;
   const base = Math.min(spanMonths/12, 1);
   const daysSinceLast = (now.getTime() - times[times.length-1]) / (1000*60*60*24);

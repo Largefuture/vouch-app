@@ -456,3 +456,38 @@ input::placeholder,textarea::placeholder{color:var(--ink-3);opacity:.75}
 @media (prefers-reduced-motion: reduce){
   .illo.float,.illo .spark,.sky b,.burst i{animation:none}
 }
+
+
+/* =========================================================================
+   ACCESSIBILITY PRIMITIVES — native controls styled as the existing switches/stars
+   ========================================================================= */
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+:where(button,a,input,select,textarea,summary,[tabindex]):focus-visible{outline:3px solid var(--emerald);outline-offset:2px;border-radius:6px}
+input:focus-visible,textarea:focus-visible{outline:3px solid var(--emerald);outline-offset:1px}
+/* switches: a real checkbox inside the label; visuals follow :checked */
+.toggle{position:relative}
+.toggle input[type=checkbox]{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.toggle:has(input:focus-visible){outline:3px solid var(--emerald);outline-offset:2px}
+.toggle:has(input:checked){border-color:var(--emerald);background:var(--emerald-wash)}
+.toggle:has(input:checked) .sw{background:var(--emerald)}
+.toggle:has(input:checked) .sw::after{left:20px}
+/* star rating: a radio group */
+.bigstars{border:none;padding:0;margin:6px 0}
+.bigstars label{position:relative;cursor:pointer;font-size:42px;line-height:1;filter:grayscale(1) opacity(.35);transition:transform .1s,filter .15s;display:inline-block}
+.bigstars label.on{filter:none;transform:scale(1.05)}
+.bigstars label:hover{transform:scale(1.12)}
+.bigstars input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+.bigstars label:has(input:focus-visible){outline:3px solid var(--emerald);outline-offset:4px;border-radius:8px}
+/* visible field labels */
+.lbl{display:block;font-size:12.5px;font-weight:700;letter-spacing:.02em;color:var(--ink-2);margin:2px 0 -6px}
+.field{display:flex;flex-direction:column;gap:8px}
+/* demo banner: persistent, unmistakable */
+.demo-banner{display:flex;gap:10px;align-items:center;background:var(--gold-wash);color:var(--gold);border:1px dashed rgba(255,210,63,.55);
+  border-radius:12px;padding:9px 13px;font-size:12.5px;font-weight:700;letter-spacing:.02em;margin:10px 0 4px}
+.demo-banner b{font-weight:800}
+@media (prefers-reduced-motion: reduce){ *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important} }
+/* real on-device QR */
+.qr-real{display:inline-block;background:#fff;padding:10px;border-radius:16px;border:1px solid var(--line);box-shadow:var(--shadow)}
+.qr-real svg{width:170px;height:170px;display:block}
+.qr-real.qr-missing{padding:14px;background:var(--card)}
+.linkcard code{white-space:normal;overflow-wrap:anywhere}

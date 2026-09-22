@@ -19,16 +19,19 @@
 </head>
 <body>
 <div id="app"></div>
+<script src="qrcode.js"></script>
 <script src="trust.js"></script>
 <script src="api.js"></script>
 <script src="data.js"></script>
 <script src="app.js"></script>
 <script>
-  // one-time bootstrap: ?api=https://your-backend lets you point this static install at a
-  // live backend later without redeploying — visit the link once, it's remembered on the device.
+  // SECURITY: the API destination is fixed at build time (see api.js). A URL parameter must never
+  // be able to redirect this app — and its bearer token — to another origin. Any override that an
+  // older build may have persisted is cleared here, except on a local dev host.
   (function () {
-    var p = new URLSearchParams(location.search).get("api");
-    if (p !== null) { try { localStorage.setItem("vouch_api", p); } catch (e) {} }
+    var dev = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    if (!dev) { try { localStorage.removeItem("vouch_api"); } catch (e) {} }
+    if (location.search.indexOf("api=") >= 0) { try { history.replaceState(null, "", location.pathname + location.hash); } catch (e) {} }
   })();
   // PWA: register service worker when served over http(s); silently skipped on file://
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

@@ -237,23 +237,29 @@ function buildSeed(){
 }
 
 // ---- store API ----
+let STORAGE_ERROR = null;   // surfaced in Settings — a failed save must never be silent
 function load(){
-  let s = null;
-  try{ s = JSON.parse(localStorage.getItem(KEY)); }catch(e){}
-  if(!s || !s.workers){ s = buildSeed(); save(s); }
+  let s = null, raw = null;
+  try{ raw = localStorage.getItem(KEY); s = raw ? JSON.parse(raw) : null; }catch(e){ STORAGE_ERROR = "Stored data was unreadable and has been set aside (vouch_data_corrupt)."; }
+  if(s && (!s.workers || typeof s.workers!=="object")) { s = null; }
+  if(!s){ if(raw){ try{ localStorage.setItem("vouch_data_corrupt", raw); }catch(e){} } s = buildSeed(); save(s); }
+  if(!Array.isArray(s.interactions)) s.interactions = [];
+  if(!s.session || typeof s.session!=="object") s.session = { current: Object.keys(s.workers)[0]||null };
   return s;
 }
-function save(s){ try{ localStorage.setItem(KEY, JSON.stringify(s)); }catch(e){} }
+function save(s){ try{ localStorage.setItem(KEY, JSON.stringify(s)); STORAGE_ERROR=null; return true; }
+  catch(e){ STORAGE_ERROR = "Couldn't save on this device (storage full or blocked). Changes may be lost — export your record."; return false; } }
 let STATE = load();
 
 // ---- cloud sync (local-first; opt-in) ----
-let SYNC = { online:false, enabled:(()=>{ try{ const v=localStorage.getItem("vouch_sync"); return v===null?true:v==="1"; }catch(e){ return true; } })(), last:null, busy:false };
+// CONSENT: nothing leaves the device until the worker explicitly publishes (Settings / onboarding).
+// `vouch_sync` is "1" only after that choice; signing out or switching accounts turns it off again.
+let SYNC = { online:false, enabled:(()=>{ try{ return localStorage.getItem("vouch_sync")==="1"; }catch(e){ return false; } })(), last:null, busy:false, lastError:null };
 let syncTimer=null;
 const api = ()=> (window.Vouch && window.Vouch.api);
 const signedIn = ()=> !!(api() && api().token());
-// Frictionless publish: if there's no token yet, silently mint an anonymous device
-// token so the worker's record reaches the server (customers can then vouch). Email
-// sign-in stays optional — only needed to recover on a new device.
+// After the worker chooses to publish, an anonymous device token is minted so the record can
+// reach the server (customers can then vouch). Email sign-in stays optional — it adds recovery.
 async function ensureToken(){
   if(signedIn()) return true;
   if(!api()) return false;
@@ -262,16 +268,86 @@ async function ensureToken(){
   return false;
 }
 function scheduleSync(){ if(!SYNC.enabled||!SYNC.online) return; clearTimeout(syncTimer); syncTimer=setTimeout(doSync, 900); }
-function realState(){
-  // Never push the demo world to the real backend — sync only the worker's OWN records.
-  const workers={}; Object.values(STATE.workers||{}).forEach(w=>{ if(!w.demo) workers[w.handle]=w; });
-  const interactions=(STATE.interactions||[]).filter(i=>!i.demo && workers[i.workerHandle]);
+// ---- deletion tombstones: a delete is "pending" until the server confirms; never resurrected ----
+function tombstones(){ try{ return JSON.parse(localStorage.getItem("vouch_tombstones")||"[]"); }catch(e){ return []; } }
+function saveTombstones(t){ try{ localStorage.setItem("vouch_tombstones", JSON.stringify(t)); }catch(e){} }
+let flushing=null;
+async function flushTombstones(){
+  if(flushing) return flushing;                    // single-flight: overlapping flushes dropped deletions
+  if(!api()||!SYNC.online) return;
+  if(!tombstones().length) return;
+  flushing=(async()=>{
+    for(const ts of tombstones()){
+      const r=await api().deleteWorker(ts.handle);
+      // 200 = deleted; 410 = already tombstoned. A bare 404 may be a misrouted base, so only treat
+      // the app's own "worker not found" as confirmation. Anything else stays pending and retries.
+      const gone = r && (r.ok || r.status===410 || (r.status===404 && /worker not found/i.test(r.detail||"")));
+      if(gone) saveTombstones(tombstones().filter(x=>x.handle!==ts.handle));   // re-read: never write a stale snapshot
+      else if(r && (r.status===401||r.status===403)) { const t2=tombstones(); const e=t2.find(x=>x.handle===ts.handle); if(e){ e.blocked=true; saveTombstones(t2); } }
+    }
+  })().finally(()=>{ flushing=null; });
+  return flushing;
+}
+function accountId(){ try{ return localStorage.getItem("vouch_account")||""; }catch(e){ return ""; } }
+function realState(only){
+  // Push only: this device's OWN, non-demo records, not being deleted, not owned by a DIFFERENT
+  // account (switching accounts must never upload the previous person's records), and never the
+  // server rows we just pulled (echoing them back would mint evidence-free duplicates).
+  const dead=new Set(tombstones().map(t=>t.handle)); const me=accountId();
+  const workers={}; Object.values(STATE.workers||{}).forEach(w=>{
+    if(w.demo || dead.has(w.handle)) return;
+    if(only && w.handle!==only) return;
+    if(w.syncedTo && me && w.syncedTo!==me) return;      // belongs to another signed-in account
+    workers[w.handle]=w; });
+  const interactions=(STATE.interactions||[]).filter(i=>!i.demo && workers[i.workerHandle]
+    && i.origin!=="server" && !i.serverId && !(typeof i.id==="string" && i.id.startsWith("srv_")));
   return { workers, interactions };
 }
-async function doSync(){ if(!SYNC.enabled) return false;
-  const real=realState(); if(!Object.keys(real.workers).length) return false;  // nothing real to publish yet
-  if(!await ensureToken()) return false; SYNC.busy=true; const r=await api().sync(real); SYNC.busy=false; if(r&&r.ok){ SYNC.last=Date.now(); } return !!(r&&r.ok); }
-async function checkOnline(){ if(!api()){ SYNC.online=false; return false; } const r=await api().health(); SYNC.online=!!(r&&r.ok); if(SYNC.online&&SYNC.enabled) doSync(); return SYNC.online; }
+async function doSync(only){ if(!SYNC.enabled) return false;
+  await flushTombstones();
+  const real=realState(only); const want=Object.keys(real.workers);
+  if(!want.length) return false;                                  // nothing of ours to publish
+  if(!await ensureToken()) return false; SYNC.busy=true; const r=await api().sync(real); SYNC.busy=false;
+  if(!(r&&r.ok)){
+    SYNC.lastError = r&&r.status===401 ? "Sign-in expired — publish again to reconnect."
+      : (r&&r.timeout ? "Server slow — will retry." : "Couldn't reach the server — will retry.");
+    return false; }
+  SYNC.last=Date.now(); SYNC.lastError=null;
+  // THIS account deleted these handles: the device must drop its stale copies.
+  if(Array.isArray(r.tombstoned)&&r.tombstoned.length){
+    r.tombstoned.forEach(h=>{ delete STATE.workers[h]; STATE.interactions=STATE.interactions.filter(i=>i.workerHandle!==h); });
+    if(!STATE.workers[STATE.session.current]) STATE.session.current=Object.keys(STATE.workers)[0]||null; }
+  // Someone else's deleted handle: KEEP the local record, report the failure, let the app re-slug.
+  const blocked=[].concat(r.handle_unavailable||[]);
+  if(r.skipped) SYNC.lastError="Some records belong to another account and were not published.";
+  if(blocked.length) SYNC.lastError="That name is taken — publish again to pick another.";
+  const accepted=(r.workers||0)>0;
+  if(accepted){ const me=accountId(); want.forEach(h=>{ if(STATE.workers[h] && !blocked.includes(h)) STATE.workers[h].syncedTo=me||"device"; }); }
+  save(STATE);
+  return accepted && !blocked.length; }
+async function checkOnline(){ if(!api()){ SYNC.online=false; return false; } const r=await api().health(); SYNC.online=!!(r&&r.ok); if(SYNC.online){ SYNC.health=r; flushTombstones(); if(SYNC.enabled) doSync(); } return SYNC.online; }
+// retry pending work as soon as the device is actually back, not only on reload
+if(typeof window!=="undefined" && window.addEventListener){
+  window.addEventListener("online", ()=>checkOnline());
+  if(typeof document!=="undefined" && document.addEventListener)
+    document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) checkOnline(); });
+}
+// Non-destructive merge of server state into local (adds what's missing, never deletes local work).
+function mergeServerState(r){
+  let changed=0;
+  let everDeleted=[]; try{ everDeleted=JSON.parse(localStorage.getItem("vouch_deleted")||"[]"); }catch(e){}
+  const dead=new Set([...tombstones().map(t=>t.handle), ...everDeleted]);
+  (r.workers||[]).forEach(w=>{ if(dead.has(w.handle)) return; if(!STATE.workers[w.handle]){ STATE.workers[w.handle]=w; changed++; } });
+  const byId={}, bySrv={}; STATE.interactions.forEach(x=>{ if(x.id) byId[x.id]=x; if(x.serverId) bySrv[x.serverId]=x; });
+  (r.interactions||[]).forEach(i=>{ if(!STATE.workers[i.workerHandle]) return;
+    const ex=(i.id&&byId[i.id])||(i.serverId&&bySrv[i.serverId]);
+    if(ex){ // keep local text; adopt the server's authoritative evidence + moderation flags
+      let d=false; ["serverId","authSignals","hidden","withdrawn","quarantined","origin"].forEach(k=>{ if(i[k]!==undefined && JSON.stringify(ex[k])!==JSON.stringify(i[k])){ ex[k]=i[k]; d=true; } });
+      if(d) changed++; return; }
+    STATE.interactions.unshift(i); changed++; });
+  if(changed){ if(!STATE.workers[STATE.session.current]) STATE.session.current=Object.keys(STATE.workers)[0]||null; save(STATE); }
+  return changed;
+}
 
 const store = {
   state(){ return STATE; },
@@ -284,21 +360,36 @@ const store = {
   setCurrent(h){ STATE.session.current=h; save(STATE); },
   addWorker(w){ STATE.workers[w.handle]=w; STATE.session.current=w.handle; save(STATE); scheduleSync(); },
   updateWorker(h,patch){ if(STATE.workers[h]){ Object.assign(STATE.workers[h],patch); save(STATE); scheduleSync(); } },
-  deleteWorker(h){ delete STATE.workers[h]; STATE.interactions=STATE.interactions.filter(i=>i.workerHandle!==h);
+  async deleteWorker(h){
+    const w=STATE.workers[h]; const wasDemo=!!(w&&w.demo);
+    delete STATE.workers[h]; STATE.interactions=STATE.interactions.filter(i=>i.workerHandle!==h);
     if(STATE.session.current===h) STATE.session.current=Object.keys(STATE.workers)[0]||null; save(STATE);
-    if(SYNC.online&&api()) api().deleteWorker(h); },
+    if(wasDemo) return { local:true, cloud:"n/a" };                       // demo never existed on the server
+    const t=tombstones().filter(x=>x.handle!==h); t.push({handle:h, at:new Date().toISOString(), owner:(()=>{ try{ return localStorage.getItem("vouch_email")||""; }catch(e){ return ""; } })()}); saveTombstones(t);
+    try{ const gone=JSON.parse(localStorage.getItem("vouch_deleted")||"[]"); if(!gone.includes(h)){ gone.push(h); localStorage.setItem("vouch_deleted",JSON.stringify(gone)); } }catch(e){}
+    if(!api()||!signedIn()) return { local:true, cloud:"pending" };
+    await flushTombstones();
+    return { local:true, cloud: tombstones().some(x=>x.handle===h) ? "pending" : "deleted" }; },
+  pendingDeletions(){ return tombstones().map(t=>t.handle); },
+  patchInteraction(serverId, patch){ const x=STATE.interactions.find(i=>i.serverId===serverId); if(x){ Object.assign(x,patch); save(STATE); } return !!x; },
+  storageError(){ return STORAGE_ERROR; },
   addInteraction(i){ STATE.interactions.unshift(i); save(STATE); scheduleSync(); },
   // sync surface for the UI
   sync:{
-    status(){ return { online:SYNC.online, enabled:SYNC.enabled, last:SYNC.last, busy:SYNC.busy,
+    status(){ return { online:SYNC.online, enabled:SYNC.enabled, last:SYNC.last, busy:SYNC.busy, lastError:SYNC.lastError,
+      support:(SYNC.health&&SYNC.health.support_contact)||"", moderation:(SYNC.health&&SYNC.health.moderation)||"unknown",
+      pendingDeletions: tombstones().length, pendingBlocked: tombstones().filter(t=>t.blocked).length,
+      anonymous: signedIn() && !((()=>{ try{ return localStorage.getItem("vouch_email")||""; }catch(e){ return ""; } })()),
       base: api()?api().base():"", signedIn:signedIn(),
       email:(()=>{ try{ return localStorage.getItem("vouch_email")||""; }catch(e){ return ""; } })() }; },
     setEnabled(b){ SYNC.enabled=!!b; try{ localStorage.setItem("vouch_sync", b?"1":"0"); }catch(e){} if(b) checkOnline(); },
     async refresh(){ return checkOnline(); },
     async backup(){ const ok=await doSync(); return ok; },
-    async restore(){ if(!signedIn()) return false; const r=await api().pull(); if(r&&r.ok&&Array.isArray(r.workers)){
-        const workers={}; r.workers.forEach(w=>workers[w.handle]=w); STATE.workers=workers; STATE.interactions=r.interactions||[];
-        if(!STATE.workers[STATE.session.current]) STATE.session.current=Object.keys(workers)[0]||null; save(STATE); return true; } return false; },
+    // PUBLISH = the explicit consent step. Turns cloud sync on and pushes now.
+    async publish(only){ SYNC.enabled=true; try{ localStorage.setItem("vouch_sync","1"); }catch(e){} if(!SYNC.online) await checkOnline(); return await doSync(only); },
+    // Pull the server's copy and MERGE it in (new customer vouches appear; local work is never discarded).
+    async pullMerge(){ if(!signedIn()||!api()) return 0; const r=await api().pull(); if(!(r&&r.ok&&Array.isArray(r.workers))) return 0; return mergeServerState(r); },
+    async restore(){ if(!signedIn()) return false; const r=await api().pull(); if(r&&r.ok&&Array.isArray(r.workers)){ mergeServerState(r); return true; } return false; },
   },
   // auth surface
   auth:{
@@ -306,9 +397,27 @@ const store = {
     email(){ try{ return localStorage.getItem("vouch_email")||""; }catch(e){ return ""; } },
     async request(email){ if(!api()) return {ok:false,offline:true}; return await api().authRequest(email); },
     async verify(email,code){ if(!api()) return {ok:false}; const r=await api().authVerify(email,code);
-      if(r&&r.ok&&r.token){ api().setToken(r.token); try{ localStorage.setItem("vouch_email", r.email||email); }catch(e){} SYNC.online=true; await doSync(); }
+      if(r&&r.ok&&r.token){
+        let prev=""; try{ prev=localStorage.getItem("vouch_email")||""; }catch(e){}
+        api().setToken(r.token);
+        try{ localStorage.setItem("vouch_email", r.email||email); localStorage.setItem("vouch_account", r.email||email); }catch(e){}
+        SYNC.online=true;
+        // The server re-parented anything this device had published anonymously.
+        (r.migrated||[]).forEach(h=>{ if(STATE.workers[h]) STATE.workers[h].syncedTo=r.email||email; });
+        if(r.migrated&&r.migrated.length) save(STATE);
+        // ACCOUNT ISOLATION: signing into a DIFFERENT account never uploads this device's existing
+        // records to it. Publishing is a fresh, explicit choice for the new account.
+        if(prev && prev!==(r.email||email)){ SYNC.enabled=false; try{ localStorage.setItem("vouch_sync","0"); }catch(e){} r.switchedAccount=true; }
+        else if(SYNC.enabled){ await doSync(); }
+      }
       return r; },
-    async signout(){ if(api()){ try{ await api().signout(); }catch(e){} api().setToken(""); } try{ localStorage.removeItem("vouch_email"); }catch(e){} },
+    // Signing out revokes this device's key. For an ANONYMOUS device account that key is the ONLY
+    // way back to the published record, so the caller must confirm; pending deletions flush first.
+    anonymous(){ return signedIn() && !((()=>{ try{ return localStorage.getItem("vouch_email")||""; }catch(e){ return ""; } })()); },
+    async signout(){ await flushTombstones();
+      if(api()){ try{ await api().signout(); }catch(e){} api().setToken(""); } try{ localStorage.removeItem("vouch_email"); localStorage.removeItem("vouch_account"); }catch(e){}
+      // signing out is a privacy boundary: no automatic republishing until the worker chooses again
+      SYNC.enabled=false; try{ localStorage.setItem("vouch_sync","0"); }catch(e){} },
   },
   hashPhone(p){ // tiny stable hash → customer id
     let h=0; const s=(p||"").replace(/\D/g,"")||("anon"+Date.now());
